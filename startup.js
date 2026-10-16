@@ -1,14 +1,14 @@
 // Keep startup failures actionable even when an imported module cannot load.
 (() => {
   const deadline = setTimeout(() => {
-    if (window.YAQINTOP_BUYER_STARTED) return;
+    if (window.IZBOR_BUYER_STARTED) return;
     const view = document.querySelector('#view');
     if (!view) return;
     view.replaceChildren();
     const panel = document.createElement('div');
     panel.className = 'empty startup-error';
     const title = document.createElement('h2');
-    title.textContent = 'Не удалось открыть YAQINTOP MARKET';
+    title.textContent = 'Не удалось открыть Izbor Market';
     const text = document.createElement('p');
     text.textContent = 'Файлы сайта не загрузились. Обновите страницу и повторите попытку.';
     const retry = document.createElement('button');
