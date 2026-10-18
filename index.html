@@ -1,7 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-brand-product="buyer">
   <head>
     <meta charset="UTF-8" />
+    <link rel="preload" href="assets/fonts/manrope-regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="assets/fonts/manrope-bold.woff2" as="font" type="font/woff2" crossorigin>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <script src="shared/appearance-init.js"></script>
     <link rel="stylesheet" href="shared/appearance.css" />
@@ -10,7 +12,7 @@
     <title>Izbor Market</title>
     <link rel="canonical" href="https://izbor.uz/">
     <meta property="og:url" content="https://izbor.uz/">
-    <link rel="icon" type="image/png" href="assets/izbor-buyer-transparent.png" />
+    <link rel="icon" type="image/png" href="assets/izbor-icon-32.png" />
 
     <link rel="stylesheet" href="styles.css?v=20261016-izbor" />
     <meta property="og:title" content="Izbor Market — товары и магазины рядом" />
@@ -19,12 +21,15 @@
     <link rel="apple-touch-icon" href="assets/izbor-icon-192.png" />
       <link rel="stylesheet" href="shared/responsive.css?v=20261005-spacing-2" />
       <link rel="stylesheet" href="market.css?v=20261016-izbor" />
-  </head>
+  <meta property="og:image" content="https://izbor.uz/assets/izbor-social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="shared/brand-system.css?v=20261017">
+</head>
   <body>
     <div id="app" class="app-shell">
       <aside class="desktop-sidebar">
         <button class="brand" data-route="home" aria-label="Izbor Market">
-          <img src="assets/izbor-buyer-transparent.png" alt="" />
+          <img src="assets/izbor-icon-192.png" alt="" />
           <span><b>Izbor Market</b><small>Покупателям</small></span>
         </button>
         <nav id="desktopNav" class="desktop-nav"></nav>
@@ -36,8 +41,8 @@
 
       <main class="main-column">
         <header class="topbar">
-          <button class="button catalog-shortcut" data-route="catalog"><i data-lucide="layout-grid"></i><span data-i18n="catalog">Каталог</span></button>
-          <button class="mobile-brand brand" data-route="home"><img src="assets/izbor-buyer-transparent.png" alt="" /><b>Izbor Market</b></button>
+          <button class="button catalog-shortcut" data-route="catalog" aria-label="Каталог"><i data-lucide="layout-grid"></i><span data-i18n="catalog">Каталог</span></button>
+          <button class="mobile-brand brand" data-route="home"><img src="assets/izbor-icon-192.png" alt="" /><b>Izbor Market</b></button>
           <div class="global-search">
             <i data-lucide="search"></i>
             <input id="globalSearch" autocomplete="off" data-i18n-placeholder="searchPlaceholder" placeholder="Поиск товаров и категорий" />

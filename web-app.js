@@ -1,3 +1,4 @@
+import {productSpecifications} from './shared/products.js';
 import {
   createApiClient,
   resolveApiBaseUrl,
@@ -90,7 +91,7 @@ const nav = [
   ["profile", "Профиль"],
 ];
 $("#app").outerHTML =
-  `<a class="skip-link" href="#view">К содержимому</a><div class="web-shell"><aside class="web-sidebar"><a class="web-brand" href="#home"><img src="assets/izbor-buyer-transparent.png" alt="Izbor Market"><span>Izbor Market<br><small class="muted">Покупателям</small></span></a><nav aria-label="Основная навигация">${nav.map(([key, title]) => `<a href="#${key}" data-nav="${key}">${title}</a>`).join("")}</nav><div class="sidebar-footer">${supportLinks(base, "buyer")}<a href="../seller/">Продавцам →</a></div></aside><main class="web-main"><header class="web-header"><form id="searchForm" class="toolbar" style="margin:0;flex:1"><label class="visually-hidden" for="webSearch">Поиск товаров</label><input id="webSearch" name="q" placeholder="Искать товары и категории" autocomplete="off"><button class="button">Найти</button></form><a href="#notifications" aria-label="Уведомления">Уведомления</a></header><section id="view" class="web-content" aria-live="polite"></section></main></div>`;
+  `<a class="skip-link" href="#view">К содержимому</a><div class="web-shell"><aside class="web-sidebar"><a class="web-brand" href="#home"><img src="assets/izbor-logo.png" alt="Izbor Market"><span>Izbor Market<br><small class="muted">Покупателям</small></span></a><nav aria-label="Основная навигация">${nav.map(([key, title]) => `<a href="#${key}" data-nav="${key}">${title}</a>`).join("")}</nav><div class="sidebar-footer">${supportLinks(base, "buyer")}<a href="../seller/">Продавцам →</a></div></aside><main class="web-main"><header class="web-header"><form id="searchForm" class="toolbar" style="margin:0;flex:1"><label class="visually-hidden" for="webSearch">Поиск товаров</label><input id="webSearch" name="q" placeholder="Искать товары и категории" autocomplete="off"><button class="button">Найти</button></form><a href="#notifications" aria-label="Уведомления">Уведомления</a></header><section id="view" class="web-content" aria-live="polite"></section></main></div>`;
 const img = (url, alt, thumb = false) => {
   const source = mediaUrl(url, base, thumb);
   return source
@@ -246,7 +247,7 @@ async function detail(id, master = false) {
     ? "<h2>Предложения магазинов</h2>" +
       (offers || empty("Предложений пока нет"))
     : `<div class="actions">${button("Магазин", "store", `data-id="${Number(product.shop_id)}"`)}${button("Чат", "start-chat", `data-id="${Number(product.shop_id)}"`)}${button("В избранное", "favorite", `data-id="${Number(id)}"`)}${button("Отзывы", "reviews", `data-id="${Number(id)}"`)}</div>`;
-  return `${heading(product.title || product.canonical_name)}<div class="detail-grid"><div>${img(images[0], product.title || product.canonical_name)}<div class="gallery">${images.map((url) => img(url, "Фото товара")).join("")}</div></div><div class="card"><div class="price">${money(product.price || product.offers?.[0]?.price)}</div><p>${esc(product.description || "Описание пока не добавлено")}</p><p class="muted">${esc(product.brand || "")} ${esc(product.model || "")} ${esc(product.barcode || product.gtin || "")}</p>${actions}</div></div>`;
+  return `${heading(product.title || product.canonical_name)}<div class="detail-grid"><div>${img(images[0], product.title || product.canonical_name)}<div class="gallery">${images.map((url) => img(url, "Фото товара")).join("")}</div></div><div class="card"><div class="price">${money(product.price || product.offers?.[0]?.price)}</div><p>${esc(product.description || "Описание пока не добавлено")}</p><p class="muted">${esc(product.brand || "")} ${esc(product.model || "")} ${esc(product.barcode || product.gtin || "")}</p>${productSpecifications(product).length ? `<section><h2>Характеристики</h2><dl>${productSpecifications(product).map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl></section>` : ""}${actions}</div></div>`;
 }
 async function store(id) {
   const requestGeneration = generation;
@@ -349,7 +350,7 @@ async function go(next = route, data = routeData) {
             : "/products?limit=24",
         ),
       );
-      html = `<section class="buyer-home-hero"><div><p class="eyebrow">Izbor Market</p><h1>Находите лучшие товары рядом</h1><p>Сравнивайте цены, открывайте магазины на карте и прокладывайте маршрут.</p><div class="actions"><a class="button" href="#categories">Смотреть каталог</a><a class="button" href="#map">Открыть карту</a></div></div><img class="buyer-home-logo" src="assets/izbor-buyer-transparent.png" alt="Логотип Izbor Market"></section><div class="actions">${button("Моё местоположение", "locate")}</div>${recentSearches()}<section class="section"><h2>Рекомендации</h2>${grid(products)}</section><section class="section"><h2>Последние просмотры</h2><div id="recentProducts">${loading()}</div></section>`;
+      html = `<section class="buyer-home-hero"><div><p class="eyebrow">Izbor Market</p><h1>Находите лучшие товары рядом</h1><p>Сравнивайте цены, открывайте магазины на карте и прокладывайте маршрут.</p><div class="actions"><a class="button" href="#categories">Смотреть каталог</a><a class="button" href="#map">Открыть карту</a></div></div><img class="buyer-home-logo" src="assets/izbor-logo.png" alt="Логотип Izbor Market"></section><div class="actions">${button("Моё местоположение", "locate")}</div>${recentSearches()}<section class="section"><h2>Рекомендации</h2>${grid(products)}</section><section class="section"><h2>Последние просмотры</h2><div id="recentProducts">${loading()}</div></section>`;
     } else if (route === "categories") html = await categories(data);
     else if (["catalog", "search"].includes(route)) html = await catalogue();
     else if (route === "product" || route === "master")
