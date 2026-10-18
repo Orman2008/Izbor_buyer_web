@@ -1,19 +1,31 @@
+import {authText,authErrorText,translateAuth} from './shared/auth-copy.js';
+import {otpMarkup,bindOtp,resendCountdown} from './shared/auth-otp.js';
+import {createTelegramWebLogin} from './shared/telegram-auth.js';
 // The buyer app uses phone verification for both sign-in and registration.
 export function createBuyerAuth({api, apiBase, language, escape, openModal, closeModal, onSession}) {
-  let current = null;
+  let current = null, stopCountdown=()=>{};
+  const telegram=createTelegramWebLogin({client:'buyer',request:(path,options)=>api(path,{...options,body:JSON.stringify(options.body)})});
   const getForm = () => document.querySelector('#authForm');
   function render() {
     const flow = current;
     if (!flow) return;
     let fields;
-    if (flow.stage === 'phone') {
-      fields = `<div class="field"><label for="authPhone">Номер телефона</label><div class="auth-phone"><span>+998</span><input id="authPhone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="90 123 45 67" value="${escape(flow.phone.slice(4))}" required></div><small class="field-note">Введите 9 цифр после +998. Код придёт в Telegram или по SMS.</small></div><button class="button" name="channel" value="telegram">Получить код в Telegram</button><button class="button soft" name="channel" value="sms">Получить код по SMS</button>`;
+    if (flow.stage === 'telegram') {
+      fields=`<label class="auth-legal"><input type="checkbox" name="legal" required> Принимаю <a href="${escape(apiBase)}/legal/buyer/terms" target="_blank" rel="noopener">условия</a> и <a href="${escape(apiBase)}/legal/buyer/privacy" target="_blank" rel="noopener">политику конфиденциальности</a></label><button class="button">Продолжить через Telegram</button><button type="button" class="button soft" data-auth-phone>Получить SMS-код</button>`;
+    } else if (flow.stage === 'phone') {
+      fields = `<div class="field"><label for="authPhone">Номер телефона</label><div class="auth-phone"><span>+998</span><input id="authPhone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="90 123 45 67" value="${escape(flow.phone.slice(4))}" required></div><small class="field-note">Введите 9 цифр после +998. Код придёт по SMS.</small></div><button class="button soft" name="channel" value="sms">Получить код через SMS</button>`;
     } else if (flow.stage === 'code') {
-      fields = `<p class="auth-copy">Код отправлен ${flow.channel === 'sms' ? 'по SMS' : 'в Telegram'} на ${escape(flow.phone)}.</p><div class="field"><label for="authCode">Код подтверждения</label><input id="authCode" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{${flow.codeLength}}" maxlength="${flow.codeLength}" placeholder="${'0'.repeat(flow.codeLength)}" required></div><button class="button">Подтвердить</button>${flow.channel === 'telegram' ? '<a class="button soft" href="https://telegram.org/apps" target="_blank" rel="noopener">Открыть Telegram</a>' : ''}<button type="button" class="button soft" data-auth-resend>Получить новый код по SMS</button><button type="button" class="button ghost" data-auth-phone>Изменить номер</button>`;
+      fields = `<p class="auth-copy">Код отправлен по SMS на ${escape(flow.phone)}.</p>${otpMarkup(flow.codeLength)}<button class="button">Подтвердить</button><button type="button" class="button soft" data-auth-resend>Получить новый код по SMS</button><button type="button" class="button ghost" data-auth-phone>Изменить номер</button><button type="button" class="button ghost" data-auth-telegram>Вернуться к Telegram</button>`;
     } else {
       fields = `<div class="field"><label for="authName">Ваше имя</label><input id="authName" name="name" autocomplete="name" maxlength="100" placeholder="Например, Лола" required></div><label class="auth-legal"><input type="checkbox" name="legal" required><span>Я принимаю <a href="${escape(apiBase)}/legal/buyer/terms" target="_blank" rel="noopener">условия использования</a> и <a href="${escape(apiBase)}/legal/buyer/privacy" target="_blank" rel="noopener">политику конфиденциальности</a>.</span></label><button class="button">Создать аккаунт</button>`;
     }
-    document.querySelector('.modal-body').innerHTML = `<div class="auth-intro"><img class="auth-logo" src="assets/izbor-buyer-transparent.png" alt="Izbor Market"><div><p class="eyebrow">Izbor Market</p><h2>${flow.stage === 'name' ? 'Создание аккаунта' : 'Вход для покупателей'}</h2><p class="auth-copy">Вход и регистрация по номеру телефона, как в приложении. Пароль не нужен.</p></div></div><form id="authForm" class="form">${fields}<p id="authError" class="auth-error" role="alert" hidden></p></form>`;
+    stopCountdown();
+    document.querySelector('.modal-body').innerHTML = `<div class="auth-intro"><img class="auth-logo" src="assets/izbor-logo.png" alt="Izbor Market"><div><p class="eyebrow">Izbor Market</p><h2>${flow.stage === 'name' ? 'Создание аккаунта' : 'Вход для покупателей'}</h2><p class="auth-copy">Один аккаунт для покупок и работы в IZBOR. Telegram или номер телефона.</p></div></div><form id="authForm" class="form">${fields}<p id="authError" class="auth-error" role="alert" hidden></p></form>`;
+    translateAuth(document.querySelector('.modal-body'),language());
+    bindOtp(document.querySelector('.modal-body'));
+    const resend=document.querySelector('[data-auth-resend]');
+    if(resend)stopCountdown=resendCountdown(resend,(flow.resendAt-Date.now())/1000,{label:authText('Получить новый код по SMS',language())});
+    document.querySelector('[data-auth-telegram]')?.addEventListener('click',()=>{flow.stage='telegram';render();});
   }
   async function submit(form, channel) {
     const flow = current;
@@ -22,12 +34,13 @@ export function createBuyerAuth({api, apiBase, language, escape, openModal, clos
     const errorElement = document.querySelector('#authError');
     errorElement.hidden = true;
     try {
+      if(flow.stage==='telegram'){if(!fd.has('legal'))throw new Error('Примите условия.');flow.busy=true;location.assign(await telegram.start());return;}
       let endpoint, payload;
       if (flow.stage === 'phone' || channel) {
-        if (flow.stage === 'phone') flow.phone = '+998' + String(fd.get('phone') || '').replace(/\D/g, '');
+        if (flow.stage === 'phone') {const digits=String(fd.get('phone')||'').replace(/\D/g,'');flow.phone='+'+(digits.length===12&&digits.startsWith('998')?digits:'998'+digits);}
         if (!/^\+998\d{9}$/.test(flow.phone)) throw new Error('Введите 9 цифр после +998.');
         endpoint = 'request';
-        payload = {phone: flow.phone, client: 'buyer', channel: channel || 'telegram'};
+        payload = {phone: flow.phone, client: 'buyer', channel: 'sms'};
       } else if (flow.stage === 'code') {
         const code = String(fd.get('code') || '').trim();
         if (!new RegExp(`^\\d{${flow.codeLength}}$`).test(code)) throw new Error(`Введите код из ${flow.codeLength} цифр.`);
@@ -41,10 +54,12 @@ export function createBuyerAuth({api, apiBase, language, escape, openModal, clos
       }
       flow.busy = true;
       form.querySelectorAll('button,input').forEach(element => element.disabled = true);
-      const data = await api(`/auth/passwordless/${endpoint}`, {method: 'POST', auth: false, body: JSON.stringify(payload)});
+      const data = await api(`/auth/account/phone/${endpoint}`, {method: 'POST', auth: false, body: JSON.stringify(payload)});
       // Closing/replacing the modal invalidates pending OTP responses.
       if (current !== flow) return;
       if (endpoint === 'request') {
+        if(data.delivery_channel!=='sms')throw Error('SMS-провайдер не подтвердил отправку. Используйте Telegram.');
+        flow.resendAt=Date.now()+(Number(data.retry_after_seconds)||60)*1000;
         flow.stage = 'code';
         flow.channel = data.delivery_channel || payload.channel;
         const length = Number(data.code_length);
@@ -59,24 +74,25 @@ export function createBuyerAuth({api, apiBase, language, escape, openModal, clos
         const token = data.token || data.access_token;
         if (!token || !data.user) throw new Error('Сервер не вернул сессию покупателя.');
         closeModal();
-        await onSession({token, user: data.user}, flow.after);
+        await onSession({...data, token}, flow.after);
       }
     } catch (error) {
-      if (current === flow) { errorElement.textContent = error.message; errorElement.hidden = false; }
+      if (current === flow) { errorElement.textContent = authErrorText(error.message,language()); errorElement.hidden = false; }
     } finally {
       flow.busy = false;
-      if (current === flow) getForm()?.querySelectorAll('button,input').forEach(element => element.disabled = false);
+      if (current === flow) {getForm()?.querySelectorAll('button,input').forEach(element => element.disabled = false);const resend=document.querySelector('[data-auth-resend]');if(resend)resend.disabled=flow.resendAt>Date.now();}
     }
   }
   return {
-    open(after) {
-      openModal('');
-      current = {stage: 'phone', phone: '', codeLength: 6, channel: 'telegram', signupToken: '', busy: false, after};
+    open(after, {resume=false}={}) {
+      openModal('', '', false, {preserveAuth:resume});
+      current = {stage: 'telegram', phone: '', codeLength: 6, channel: 'sms', signupToken: '', busy: false, after};
       render();
     },
-    cancel() { current = null; },
+    cancel() { stopCountdown();current = null;telegram.cancel().catch(()=>{}); },
+    async resume(){if(!telegram.pending())return;this.open(undefined,{resume:true});const flow=current;try{const data=await telegram.waitForCompletion({isActive:()=>current===flow&&flow.stage==='telegram'});if(data&&current===flow){closeModal();await onSession(data,flow.after);}}catch(error){if(current===flow){const el=document.querySelector('#authError');el.textContent=authErrorText(error.message,language());el.hidden=false;}}},
     submit,
-    changePhone() { if (current && !current.busy) { current.stage = 'phone'; current.signupToken = ''; render(); } },
-    resend() { return submit(getForm(), 'sms'); },
+    changePhone() { telegram.cancel().catch(()=>{});if (current && !current.busy) { current.stage = 'phone'; current.signupToken = ''; render(); } },
+    resend() { if(current?.resendAt>Date.now())return;return submit(getForm(), 'sms'); },
   };
 }

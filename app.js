@@ -1,3 +1,4 @@
+import {mountTelegramLink} from './shared/account-link.js';
 import {mountStoreMap} from './shared/maps.js';
 import {appearanceSettings} from './shared/appearance.js';
 import {ensureLegalAcceptance,placementLabel,rankingHelp,paymentStateView} from './shared/compliance.js';
@@ -29,6 +30,7 @@ function storedJson(key, fallback) {
 }
 const state = {
   route: 'home', token: localStorage.getItem('mm_web_token') || '',
+  refreshToken: localStorage.getItem('izbor_web_refresh') || '',
   user: storedJson('mm_web_user', null),
   language: localStorage.getItem('mm_web_language') || 'ru',
   products: [], shops: [], categories: [], favorites: new Set(), recent: storedJson('mm_web_recent', []),
@@ -49,9 +51,11 @@ const imageUrl = (raw) => mediaUrl(raw,API_BASE) || 'assets/product-placeholder.
 const authHeaders = () => state.token ? {Authorization:`Bearer ${state.token}`} : {};
 
 installPrivateMediaImages({request: api, baseUrl: API_BASE});
+let refreshInFlight=null,buyerSessionEpoch=0;
 async function api(path, options={}) {
+  const requestEpoch=buyerSessionEpoch;
   if(!API_BASE)throw new Error('Адрес сервера не настроен. Обновите страницу или обратитесь в поддержку.');
-  const {auth=true, ...requestOptions}=options;
+  const {auth=true, _refreshed, ...requestOptions}=options;
   const headers = {...(auth?authHeaders():{}), ...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}), ...(options.headers||{})};
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),API_REQUEST_TIMEOUT_MS);
@@ -67,6 +71,10 @@ async function api(path, options={}) {
     throw new Error('Не удалось подключиться к серверу Izbor Market. Проверьте интернет и откройте сайт по официальной ссылке.');
   } finally {
     clearTimeout(timeout);
+  }
+  if(response.status===401&&auth&&state.refreshToken&&!options._refreshed){
+    if(!refreshInFlight)refreshInFlight=api('/auth/refresh',{method:'POST',auth:false,body:JSON.stringify({refresh_token:state.refreshToken})}).then(value=>{if(requestEpoch!==buyerSessionEpoch)throw new Error('Сессия завершена.');state.token=value.token;state.refreshToken=value.refresh_token;persistSession();}).finally(()=>refreshInFlight=null);
+    await refreshInFlight;return api(path,{...options,_refreshed:true});
   }
   if (!response.ok) throw new Error(data.error || `Ошибка ${response.status}`);
   return data;
@@ -190,8 +198,8 @@ async function loadProducts(params={}, {append=false}={}) {
 async function loadShops() { state.shops=await api('/shops');state.shopsLoaded=true;return state.shops; }
 async function loadCategories() { state.categories=await api('/products/categories');state.categoriesLoaded=true;return state.categories; }
 async function loadFavorites() { if(!state.token)return; const rows=await api(`/users/me/favorites?lang=${state.language}`); state.favorites=new Set(rows.map(x=>Number(x.id||x.product_id))); }
-function persistSession(){ localStorage.setItem('mm_web_token',state.token); localStorage.setItem('mm_web_user',JSON.stringify(withoutMediaCapabilities(state.user))); localStorage.setItem('mm_web_language',state.language); }
-function logout(render=true){ state.token='';state.user=null;state.favorites.clear();clearPrivateMediaImages();localStorage.removeItem('mm_web_token');localStorage.removeItem('mm_web_user');if(render)navigate('home');renderNavigation(); }
+function persistSession(){ localStorage.setItem('izbor_web_refresh',state.refreshToken||''); localStorage.setItem('mm_web_token',state.token); localStorage.setItem('mm_web_user',JSON.stringify(withoutMediaCapabilities(state.user))); localStorage.setItem('mm_web_language',state.language); }
+function logout(render=true){ buyerSessionEpoch++;const token=state.token;if(token)fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:'{}'}).catch(()=>{});state.refreshToken='';localStorage.removeItem('izbor_web_refresh');state.token='';state.user=null;state.favorites.clear();clearPrivateMediaImages();localStorage.removeItem('mm_web_token');localStorage.removeItem('mm_web_user');if(render)navigate('home');renderNavigation(); }
 
 function emptyState(ico='package-open', text=t('empty')) { return `<div class="empty"><div>${icon(ico,52)}<h3>${esc(text)}</h3></div></div>`; }
 function errorState(error) { return `<div class="empty"><div>${icon('triangle-alert',52)}<h3>${esc(error?.message||'Не удалось загрузить данные.')}</h3><button class="button" data-retry-route>${t('retry')}</button></div></div>`; }
@@ -368,7 +376,7 @@ async function renderProfile(){
 async function showWallet(){let d=await api('/users/me/subscriptions');const section=(title,items)=>`<section class="section"><h2>${title}</h2>${items.length?`<div class="settings-list">${items.map(x=>`<div class="list-card"><span class="list-icon">${icon('ticket-check')}</span><span><b>${esc(x.title||x.product_name||x.shop_name||title)}</b><small>${esc(x.description||x.status||'')}</small></span></div>`).join('')}</div>`:emptyState()}</section>`;openModal(`${section('Талоны',d.loyalty_cards||[])}${section('Скидки',d.discounts||[])}${section('Гарантии',d.warranties||[])}${section('Предложения',d.offers||[])}`,t('wallet'),true);}
 async function showQr(){const d=await api('/rewards/customer/qr');openModal(`<div style="text-align:center"><div id="qrCanvas" class="qr-box"></div><h2>${esc(d.customer?.name||state.user.name)}</h2><p class="muted">MM-ID: ${esc(d.customer?.mapmarket_id||'')}</p><div class="notice">QR обновляется автоматически и используется продавцом для подтверждения покупки.</div></div>`,'QR',false);setTimeout(()=>{const canvas=document.createElement('canvas');window.QRCode?.toCanvas(canvas,d.qr_token,{width:190},error=>{if(!error)$('#qrCanvas')?.append(canvas);});},20);}
 
-function showAccount(){openModal(`<form id="accountForm" class="form"><div class="field"><label>Фото профиля</label><input type="file" name="avatar" accept="image/jpeg,image/png,image/webp"></div><div class="field"><label>Имя</label><input name="name" required value="${esc(state.user.name)}"></div><div class="field"><label>Телефон</label><input disabled value="${esc(state.user.phone||'')}"></div><button class="button">${t('save')}</button><button type="button" class="button danger" data-delete-account>${t('deleteAccount')}</button></form>`,t('account'));}
+function showAccount(){openModal(`<form id="accountForm" class="form"><div class="field"><label>Фото профиля</label><input type="file" name="avatar" accept="image/jpeg,image/png,image/webp"></div><div class="field"><label>Имя</label><input name="name" required value="${esc(state.user.name)}"></div><div class="field"><label>Телефон</label><input disabled value="${esc(state.user.phone||'')}"></div><button class="button">${t('save')}</button><button type="button" class="button danger" data-delete-account>${t('deleteAccount')}</button></form>`,t('account'));const identities=document.createElement('section');document.querySelector('.modal-body').append(identities);mountTelegramLink(identities,{client:'buyer',language:state.language,request:(path,options={})=>api(path,{...options,body:options.body?JSON.stringify(options.body):undefined})});}
 async function showSavedCard(){localStorage.removeItem('mm_web_card');try{openModal(paymentStateView(await api('/marketplace/payments/capabilities')),'Оплата');}catch(error){toast(error.message,true);}}
 async function showInterests(){const current=await api('/users/me/preferences').catch(()=>({categories:[]}));const selected=new Set(current.categories||[]);openModal(`<form id="interestsForm" class="form"><p class="muted">${current.completed?'Выбранные категории используются для персональных рекомендаций.':'Выберите ровно три категории для персональных рекомендаций.'}</p><div class="chips">${state.categories.map(c=>`<label class="chip ${selected.has(c)?'active':''}"><input type="checkbox" name="category" value="${esc(c)}" ${selected.has(c)?'checked':''} ${current.completed?'disabled':''} hidden>${esc(c)}</label>`).join('')}</div>${current.completed?'':`<button class="button">${t('save')}</button>`}</form>`,'Мои интересы');}
 async function checkPendingPurchase(){try{const data=await api('/rewards/customer/pending');const tx=data.transaction;if(!tx)return;openModal(`<div style="text-align:center"><span class="list-icon" style="margin:0 auto 14px">${icon('shopping-bag')}</span><h2>${esc(tx.shop_name)}</h2><p>${esc(tx.item_name||'Покупка')}</p><div class="stat-grid"><div class="stat"><small>Сумма</small><b>${money(tx.purchase_amount)}</b></div><div class="stat"><small>Скидка</small><b>${Number(tx.discount_percent||0)}%</b></div><div class="stat"><small>К оплате</small><b>${money(tx.final_amount)}</b></div></div><button class="button" data-confirm-purchase="${Number(tx.id)}">Подтвердить оплату</button></div>`,'Подтверждение оплаты');}catch{}}
@@ -376,13 +384,13 @@ function showHelp(){const topics=[['search','Поиск и карта','Това
 function showLanguage(){openModal(`<div class="settings-list">${[['ru','Русский'],['en','English'],['uz','O‘zbekcha']].map(([code,label])=>`<button class="list-card" data-language="${code}"><span class="list-icon">${code===state.language?icon('check'):icon('languages')}</span><span><b>${label}</b></span></button>`).join('')}</div>`,t('language'));}
 
 const buyerAuth=createBuyerAuth({api,apiBase:API_BASE,language:()=>state.language,escape:esc,openModal,closeModal,
-  async onSession(data,after){state.token=data.token;state.user=data.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));if(typeof after==='function')await after();else await navigate('home');}
+  async onSession(data,after){buyerSessionEpoch++;state.token=data.token;state.refreshToken=data.refresh_token||'';state.user=data.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));if(typeof after==='function')await after();else await navigate('home');}
 });
 function showAuth(after){buyerAuth.open(after);}
 
 let modalReturnFocus;
-function openModal(content,title='',wide=false){
-  buyerAuth.cancel();
+function openModal(content,title='',wide=false,{preserveAuth=false}={}){
+  if(!preserveAuth)buyerAuth.cancel();
   if(!$('#modalRoot').firstElementChild)modalReturnFocus=document.activeElement;
   $('#modalRoot').innerHTML=`<div class="modal-backdrop"><div role="dialog" aria-modal="true" aria-labelledby="buyerModalTitle" tabindex="-1" class="modal ${wide?'wide':''}"><div class="modal-head"><h2 id="buyerModalTitle">${esc(title)}</h2><button class="icon-button" aria-label="${esc(({ru:'Закрыть',en:'Close',uz:'Yopish'})[state.language]||'Close')}" data-close-modal>${icon('x')}</button></div><div class="modal-body">${content}</div></div></div>`;
   refreshIcons();
@@ -464,3 +472,5 @@ function debounce(fn,delay){let id;return(...args)=>{clearTimeout(id);id=setTime
 window.IZBOR_BUYER_STARTED=true;
 window.dispatchEvent(new window.Event('yaqintop:started'));
 bootstrap().catch(error=>{console.error(error);$('#view').innerHTML=errorState(error);refreshIcons();});
+
+if(sessionStorage.getItem('izbor.telegram.pending.buyer'))buyerAuth.resume();
