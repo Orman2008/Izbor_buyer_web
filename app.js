@@ -29,6 +29,7 @@ function storedJson(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
   catch { return fallback; }
 }
+for(const [language,copy] of Object.entries({ru:{allProducts:'Все товары',openStore:'Открыть магазин',guest:'Гость',reviewCount:'отзывов'},en:{allProducts:'All products',openStore:'Open store',guest:'Guest',reviewCount:'reviews'},uz:{allProducts:'Barcha mahsulotlar',openStore:'Do‘konni ochish',guest:'Mehmon',reviewCount:'sharh'}}))Object.assign(dictionary[language],copy);
 const state = {
   route: 'home', token: localStorage.getItem('mm_web_token') || '',
   refreshToken: localStorage.getItem('izbor_web_refresh') || '',
@@ -47,7 +48,10 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const t = (key) => dictionary[state.language]?.[key] || dictionary.ru[key] || key;
 const esc = (value='') => String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const money = (value) => `${new Intl.NumberFormat(state.language === 'en' ? 'en-US' : 'ru-RU').format(Number(value || 0))} сум`;
+const money = (value) => `${new Intl.NumberFormat(state.language === 'en' ? 'en-US' : 'ru-RU').format(Number(value || 0))} ${state.language==='en'?'UZS':state.language==='uz'?'so‘m':'сум'}`;
+// Display translated category labels while retaining canonical server values in filters.
+const categoryNames={'Продукты и супермаркеты':['Groceries','Oziq-ovqat va supermarketlar'],'Электроника и техника':['Electronics','Elektronika va texnika'],'Здоровье и аптеки':['Health and pharmacies','Salomatlik va dorixonalar'],'Одежда и обувь':['Clothing and shoes','Kiyim va poyabzal'],'Красота и уход':['Beauty and care','Go‘zallik va parvarish'],'Дом и ремонт':['Home and renovation','Uy va ta’mirlash'],'Еда и общепит':['Food and dining','Ovqat va umumiy ovqatlanish']};
+const categoryTitle=value=>categoryNames[value]?.[state.language==='en'?0:state.language==='uz'?1:-1]||value;
 const imageUrl = (raw) => mediaUrl(raw,API_BASE) || 'assets/product-placeholder.svg';
 const authHeaders = () => state.token ? {Authorization:`Bearer ${state.token}`} : {};
 
@@ -88,22 +92,33 @@ function setLoading() { $('#view').innerHTML='<div class="loader"><div class="sp
 function requireAuth(action) { if(state.token) return true; showAuth(action); return false; }
 
 const navItems = [
-  ['home','compass','home'], ['favorites','heart','favorites'], ['catalog','layout-grid','catalog'], ['chats','message-square','chats'], ['profile','user-round','profile'],
+  ['home','house','home'], ['favorites','heart','favorites'], ['map','map','map'], ['profile','user-round','profile'],
 ];
 
 function renderNavigation() {
-  const html = navItems.map(([route,ico,label])=>`<button class="nav-button ${state.route===route?'active':''}" data-route="${route}">${icon(ico)}<span>${t(label)}</span></button>`).join('');
-  $('#desktopNav').innerHTML = `${html}<button class="nav-button ${state.route==='map'?'active':''}" data-route="map">${icon('map')}<span>${t('map')}</span></button>`;
+  const html = navItems.map(([route,ico,label])=>`<button class="nav-button ${(state.route===route || (route==='home'&&['catalog','search','product'].includes(state.route)))?'active':''}" data-route="${route}">${icon(ico)}<span>${t(label)}</span></button>`).join('');
+  $('#desktopNav').innerHTML = html;
   $('#mobileNav').innerHTML = html;
   $$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));
   $$('.catalog-shortcut').forEach(el=>el.setAttribute('aria-label',t('catalog')));
   $$('[data-i18n-placeholder]').forEach(el=>el.placeholder=t(el.dataset.i18nPlaceholder));
-  $('#sideName').textContent = state.user?.name || 'Гость';
+  $('#sideName').textContent = state.user?.name || t('guest');
   $('#sideAvatar').textContent = (state.user?.name || 'M').trim()[0]?.toUpperCase() || 'M';
   refreshIcons();
 }
 
-async function navigate(route, data=null) {
+function routeHash(route,data){return '#/'+route+(data===null||data===''?'':'/'+encodeURIComponent(String(data)));}
+function readRouteHash(){
+  const match=location.hash.match(/^#\/(home|catalog|favorites|map|profile|notifications|search|product)(?:\/(.*))?$/);
+  if(!match)return null;
+  let data=null;try{data=match[2]===undefined?null:decodeURIComponent(match[2]);}catch{return null;}
+  if(match[1]==='product'&&!/^[1-9][0-9]{0,9}$/.test(data||''))return null;
+  return {route:match[1],data};
+}
+async function navigate(route, data=null, {fromHistory=false}={}) {
+  if(route==='chats')route='home';
+  if(!fromHistory && location.hash!==routeHash(route,data))history.pushState(null,'',routeHash(route,data));
+  if(state.route==='map'&&route!=='map'){state.map?.remove();state.map=null;}
   state.searchSuggestionId++; $('#searchSuggestions').classList.add('hidden');
   state.route=route; state.routeData=data; renderNavigation(); window.scrollTo({top:0,behavior:'smooth'}); setLoading();
   try {
@@ -113,7 +128,7 @@ async function navigate(route, data=null) {
     else if(route==='catalog') await renderCatalog(data);
     else if(route==='favorites') await renderFavorites();
     else if(route==='map') await renderMap();
-    else if(route==='chats') await renderChats();
+    else if(route==='chats') await renderHome();
     else if(route==='profile') await renderProfile();
     else if(route==='notifications') await renderNotifications();
     else if(route==='search') await renderSearch(data || '');
@@ -123,6 +138,7 @@ async function navigate(route, data=null) {
 }
 
 async function bootstrap() {
+  const initialRoute=readRouteHash();
   renderNavigation(); bindGlobalEvents();
   // Paint the public home immediately; network and session validation continue below.
   renderHome(true);
@@ -135,8 +151,9 @@ async function bootstrap() {
   if(state.route==='home'){
     if(initialFailure){$('#view').innerHTML=errorState(initialFailure.reason);}
     else if(!state.token){await renderHome();refreshIcons();}
-    else await navigate('home');
+    else await navigate('home',null,{fromHistory:true});
   }
+  if(initialRoute)await navigate(initialRoute.route,initialRoute.data,{fromHistory:true});
   const incomingShop=new URLSearchParams(location.search).getAll('shop');
   if(incomingShop.length===1&&/^[1-9][0-9]{0,9}$/.test(incomingShop[0])&&Number(incomingShop[0])<=2147483647){
     const id=Number(incomingShop[0]);
@@ -246,24 +263,12 @@ function storeCard(s){return `<button class="store-card" data-store="${Number(s.
 
 function skeletonGrid(){return '<div class="product-grid skeleton-grid" role="status" aria-label="'+esc({ru:'Загрузка товаров',en:'Loading products',uz:'Mahsulotlar yuklanmoqda'}[state.language])+'">'+Array.from({length:6},()=>'<div class="product-skeleton" aria-hidden="true"><div></div><span></span><span></span></div>').join('')+'</div>';}
 async function renderHome(preview=false){
-  if(!preview){if(!state.catalogLoaded) await loadProducts(); if(!state.shopsLoaded)await loadShops();}
-  let recommended=[]; if(!preview&&state.token){try{recommended=await api(`/products/recommendations?lang=${state.language}`);}catch{}}
+  if(!preview && (!state.catalogLoaded || Object.keys(state.catalogQuery).length)) await loadProducts();
   if(state.route!=='home')return;
-  const items=recommended.length?recommended:state.products.slice(0,18);
-  const markup=`<section class="hero"><div><p class="eyebrow" style="color:#bcd3ff">Izbor Market</p><h1>${t('hero')}</h1><p>${t('heroText')}</p><div class="hero-actions"><button class="button white" data-route="catalog">${icon('layout-grid')} ${t('explore')}</button><button class="button" data-route="map">${icon('map')} ${t('openMap')}</button></div></div><div class="hero-art"><img src="assets/izbor-icon-512.png" width="160" height="160" alt=""></div></section><section class="izbor-guide" aria-label="IZBOR"><article>${icon('search')}<h2>${t('howSearch')}</h2><p>${t('howSearchText')}</p></article><article>${icon('store')}<h2>${t('howCompare')}</h2><p>${t('howCompareText')}</p></article><article>${icon('map')}<h2>${t('howRoute')}</h2><p>${t('howRouteText')}</p></article></section>
-  <section class="section"><div class="section-head"><h2>${t('categories')}</h2></div><div class="chips"><button class="chip active" data-category="">${t('all')}</button>${state.categories.map(c=>`<button class="chip" data-category="${esc(c)}">${esc(c)}</button>`).join('')}</div></section>
-  <section class="section"><div class="section-head"><h2>${t('recommendations')}</h2><button class="button soft" data-route="catalog">${t('all')} ${icon('arrow-right')}</button></div>${state.catalogLoaded?productGrid(items):skeletonGrid()}</section>
-  <section class="section"><div class="section-head"><h2>${t('nearby')}</h2><button class="button soft" data-route="map">${t('map')}</button></div><div class="store-grid">${state.shops.slice(0,6).map(storeCard).join('')}</div></section><footer class="izbor-footer"><span>IZBOR · ${t('brandPromise')}</span><a href="https://seller.izbor.uz">${t('sellerLink')}</a></footer>`;
-  const view=$('#view'), hero=view.querySelector(':scope > .hero');
-  // Keep the already painted hero while real catalog responses arrive.
-  // Replacing this node needlessly delays the browser's final LCP candidate.
-  if(hero?.dataset.language===state.language && view.children[1]?.classList.contains('izbor-guide')){
-    while(view.children.length>2)view.lastElementChild.remove();
-    view.insertAdjacentHTML('beforeend',markup.slice(markup.indexOf('<section class="section">')));
-  }else{
-    view.innerHTML=markup;
-    view.querySelector('.hero').dataset.language=state.language;
-  }
+  $('#view').innerHTML=`<header class="catalog-intro"><div><p class="eyebrow">IZBOR MARKET</p><h1>${t('catalog')}</h1><p>${t('brandPromise')}</p></div><button class="button soft" data-route="map">${icon('map-pin')}${t('openMap')}</button></header>
+  <section class="section category-section" aria-label="${t('categories')}"><div class="section-head"><h2>${t('categories')}</h2></div><div class="chips"><button class="chip active" data-category="">${t('all')}</button>${state.categories.map(c=>`<button class="chip" data-category="${esc(c)}">${esc(categoryTitle(c))}</button>`).join('')}</div></section>
+  <section class="section"><div class="section-head"><h2>${t('allProducts')}</h2></div>${state.catalogLoaded?productGrid(state.products):skeletonGrid()}${loadMoreMarkup()}</section>
+  <footer class="izbor-footer"><span>IZBOR · ${t('brandPromise')}</span><a href="https://seller.izbor.uz">${t('sellerLink')}</a></footer>`;
 }
 
 async function renderCatalog(category='') {
@@ -278,7 +283,7 @@ async function renderSearch(query){
 }
 
 function catalogPageMarkup(category,items) {
-  return `${pageHead(t('catalog'),'Izbor Market')}<div class="chips"><button class="chip ${!category?'active':''}" data-category="">${t('all')}</button>${state.categories.map(c=>`<button class="chip ${category===c?'active':''}" data-category="${esc(c)}">${esc(c)}</button>`).join('')}</div>${productGrid(items)}${loadMoreMarkup()}`;
+  return `${pageHead(t('catalog'),'Izbor Market')}<div class="chips"><button class="chip ${!category?'active':''}" data-category="">${t('all')}</button>${state.categories.map(c=>`<button class="chip ${category===c?'active':''}" data-category="${esc(c)}">${esc(categoryTitle(c))}</button>`).join('')}</div>${productGrid(items)}${loadMoreMarkup()}`;
 }
 
 function searchPageMarkup(query,items) {
@@ -292,13 +297,12 @@ function loadMoreMarkup() {
 }
 
 async function loadMoreProducts() {
-  if (state.catalogLoading || !state.catalogHasMore || !['catalog','search'].includes(state.route)) return;
+  if (state.catalogLoading || !state.catalogHasMore || !['home','catalog','search'].includes(state.route)) return;
   const route=state.route, routeData=state.routeData;
   await loadProducts(state.catalogQuery,{append:true});
   if (state.route!==route || state.routeData!==routeData) return;
-  $('#view').innerHTML=route==='catalog'
-    ? catalogPageMarkup(routeData||'',state.products)
-    : searchPageMarkup(routeData||'',state.products);
+  if(route==='home')await renderHome(true);
+  else $('#view').innerHTML=route==='catalog' ? catalogPageMarkup(routeData||'',state.products) : searchPageMarkup(routeData||'',state.products);
   refreshIcons();
 }
 
@@ -346,7 +350,7 @@ function renderProductDetailsBody(){
   const specs=[...productSpecifications(p,state.language),[t('availability'),t(p.stock_status==='UNCONFIRMED'?'unconfirmed':p.in_stock===false?'outOfStock':'inStock')]];
   $('#view').innerHTML=`<button class="back-link" data-back-catalog>${icon('arrow-left')} ${t('backToProducts')}</button>
     <section class="product-detail-page"><div class="product-gallery"><img class="detail-image" src="${esc(imageUrl(active))}" alt="${esc(p.title)}">${images.length>1?`<div class="gallery-thumbs">${images.map((src,index)=>`<button class="gallery-thumb ${index===state.productImageIndex?'active':''}" data-product-image="${index}" aria-label="${esc(t('imageLabel'))} ${index+1}"><img src="${esc(imageUrl(src))}" alt=""></button>`).join('')}</div>`:''}</div>
-    <div class="detail-info"><p class="eyebrow">${esc(p.category||'Izbor Market')}</p><h1>${esc(p.title||'Товар')}</h1><p class="muted">${esc(p.shop_name||'Магазин')}</p><div class="rating">${icon('star')} <b>${Number(p.product_average_rating||p.average_rating||0).toFixed(1)}</b><span>(${Number(p.product_reviews_count||p.reviews_count||0)} отзывов)</span></div><div class="price-row detail-price"><span class="price">${money(p.price)}</span>${p.old_price&&Number(p.old_price)>Number(p.price)?`<span class="old-price">${money(p.old_price)}</span>`:''}</div><div class="hero-actions"><button class="button" data-product-chat="${Number(p.shop_id)}">${icon('message-circle')} ${t('write')}</button><button class="button soft" data-store-route="${Number(p.shop_id)}">${icon('route')} ${t('route')}</button><button class="button ghost" data-product-reviews="${Number(p.id)}">${icon('star')} ${t('reviews')}</button></div>${buyerBranchOffers(p)}<section class="detail-section"><h2>${t('description')}</h2><p class="detail-description">${esc(p.description||t('noDescription'))}</p></section>${specs.length?`<section class="detail-section"><h2>${t('specifications')}</h2><div class="spec-list">${specs.map(([label,value])=>`<div><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></section>`:''}</div></section>`;
+    <div class="detail-info"><p class="eyebrow">${esc(categoryTitle(p.category)||'IZBOR')}</p><h1>${esc(p.title||'Товар')}</h1><p class="muted">${esc(p.shop_name||'Магазин')}</p><div class="rating">${icon('star')} <b>${Number(p.product_average_rating||p.average_rating||0).toFixed(1)}</b><span>(${Number(p.product_reviews_count||p.reviews_count||0)} ${t('reviewCount')})</span></div><div class="price-row detail-price"><span class="price">${money(p.price)}</span>${p.old_price&&Number(p.old_price)>Number(p.price)?`<span class="old-price">${money(p.old_price)}</span>`:''}</div><div class="hero-actions"><button class="button" data-store="${Number(p.shop_id)}">${icon('store')} ${t('openStore')}</button><button class="button soft" data-store-route="${Number(p.shop_id)}">${icon('route')} ${t('route')}</button><button class="button ghost" data-product-reviews="${Number(p.id)}">${icon('star')} ${t('reviews')}</button></div>${buyerBranchOffers(p)}<section class="detail-section"><h2>${t('description')}</h2><p class="detail-description">${esc(p.description||t('noDescription'))}</p></section>${specs.length?`<section class="detail-section"><h2>${t('specifications')}</h2><div class="spec-list">${specs.map(([label,value])=>`<div><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></section>`:''}</div></section>`;
 }
 
 function buyerBranchOffers(p){
@@ -355,14 +359,14 @@ function buyerBranchOffers(p){
 }
 async function showStore(shopId){
   let shop=state.shops.find(s=>Number(s.id)===shopId); if(!shop){shop=await api(`/shops/${shopId}`);state.shops.push(shop);} const products=await api(`/products?shop_id=${shopId}&lang=${state.language}`);const network=await api(`/shops/${shopId}/locations`);
-  openModal(`<div class="profile-hero"><img class="store-logo" src="${esc(imageUrl(shop.logo_url))}" alt=""><div><p class="eyebrow">Izbor Market</p><h2>${esc(shop.name||'Магазин')}</h2><p class="muted">${esc(shop.address||'')}</p></div></div>${network.branches.length>1?`<section><h3>Филиалы сети</h3>${network.branches.map(b=>`<button class="list-card" data-store="${b.branch_id}"><span><b>${esc(b.branch_name||b.name)}</b><small>${esc(b.address)}</small></span></button>`).join('')}</section>`:''}<div class="hero-actions"><button class="button" data-product-chat="${shopId}">${icon('message-circle')} ${t('write')}</button><button class="button soft" data-store-route="${shopId}">${icon('route')} ${t('route')}</button></div><section class="section">${productGrid(products)}</section>`,shop.name||'',true);
+  openModal(`<div class="profile-hero"><img class="store-logo" src="${esc(imageUrl(shop.logo_url))}" alt=""><div><p class="eyebrow">Izbor Market</p><h2>${esc(shop.name||'Магазин')}</h2><p class="muted">${esc(shop.address||'')}</p></div></div>${network.branches.length>1?`<section><h3>Филиалы сети</h3>${network.branches.map(b=>`<button class="list-card" data-store="${b.branch_id}"><span><b>${esc(b.branch_name||b.name)}</b><small>${esc(b.address)}</small></span></button>`).join('')}</section>`:''}<div class="hero-actions"><button class="button soft" data-store-route="${shopId}">${icon('route')} ${t('route')}</button></div><section class="section">${productGrid(products)}</section>`,shop.name||'',true);
 }
 
 async function renderMap(){
   const filter=state.mapFilter||{q:'',category:''};state.mapFilter=filter;
   state.map?.remove();state.map=null;
   const labels={ru:['Найдите товар или выберите категорию, чтобы увидеть магазины на карте.','Найти','Товар','Категория'],en:['Search for a product or choose a category to see stores on the map.','Search','Product','Category'],uz:['Do‘konlarni xaritada ko‘rish uchun mahsulot qidiring yoki toifa tanlang.','Qidirish','Mahsulot','Toifa']}[state.language]||[];
-  $('#view').innerHTML=`${pageHead(t('map'),'IZBOR')}<form id="mapFilters" class="map-filters"><label class="field"><span>${labels[2]}</span><input name="q" value="${esc(filter.q)}" placeholder="${esc(t('searchPlaceholder'))}"></label><label class="field"><span>${labels[3]}</span><select name="category"><option value="">${t('all')}</option>${state.categories.map(c=>`<option ${c===filter.category?'selected':''} value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label><button class="button">${labels[1]}</button></form><div class="map-layout"><div class="map-panel"><div id="mapStores" class="store-grid" style="grid-template-columns:1fr"><p role="status">${filter.q||filter.category?'Загрузка…':labels[0]}</p></div></div><div id="map" class="map-loading"><div>${icon('map-pin',48)}<b>Загружаем карту…</b></div></div></div>`;
+  $('#view').innerHTML=`${pageHead(t('map'),'IZBOR')}<form id="mapFilters" class="map-filters"><label class="field"><span>${labels[2]}</span><input name="q" value="${esc(filter.q)}" placeholder="${esc(t('searchPlaceholder'))}"></label><label class="field"><span>${labels[3]}</span><select name="category"><option value="">${t('all')}</option>${state.categories.map(c=>`<option ${c===filter.category?'selected':''} value="${esc(c)}">${esc(categoryTitle(c))}</option>`).join('')}</select></label><button class="button">${labels[1]}</button></form><div class="map-layout"><div class="map-panel"><div id="mapStores" class="store-grid" style="grid-template-columns:1fr"><p role="status">${filter.q||filter.category?'Загрузка…':labels[0]}</p></div></div><div id="map" class="map-loading"><div>${icon('map-pin',48)}<b>Загружаем карту…</b></div></div></div>`;
   const form=$('#mapFilters'),element=$('#map');
   const apply=()=>{state.mapFilter={q:form.elements.q.value.trim(),category:form.elements.category.value};renderMap().catch(error=>toast(error.message,true));};
   form.onsubmit=event=>{event.preventDefault();apply();};form.elements.category.onchange=apply;
@@ -411,9 +415,9 @@ async function renderProfile(){
   if(!state.token){$('#view').innerHTML=`${pageHead(t('profile'),'Izbor Market')}<div class="empty"><div><img class="auth-logo" src="assets/izbor-icon-192.png" alt=""><h2>${t('hello')}</h2><button class="button" data-auth>${t('login')}</button></div></div>${appearanceSettings()}`;return;}
   let subs={loyalty_cards:[],warranties:[],offers:[],discounts:[]};try{subs=await api('/users/me/subscriptions');}catch{}
   const total=(subs.loyalty_cards?.length||0)+(subs.warranties?.length||0)+(subs.discounts?.length||0);
-  $('#view').innerHTML=`${pageHead(t('profile'),'Izbor Market')}<div class="profile-hero"><div class="avatar">${state.user.avatar_url?`<img src="${esc(imageUrl(state.user.avatar_url))}" alt="">`:esc((state.user.name||'M')[0])}</div><div><h2>${esc(state.user.name)}</h2><p class="muted">${esc(state.user.phone||'')} · MM-ID #${state.user.id}</p></div></div><div class="stat-grid"><div class="stat"><small>${t('favorites')}</small><b>${state.favorites.size}</b></div><div class="stat"><small>${t('wallet')}</small><b>${total}</b></div><div class="stat"><small>${t('profile')}</small><b>Активен</b></div></div>
-  <div class="wallet"><div class="wallet-head"><h2>Izbor Market Wallet</h2><span>Предложения рядом</span></div><div class="wallet-grid"><div class="wallet-item"><b>Талоны</b><small>QR</small></div><div class="wallet-item"><b>Скидки</b><small>${subs.discounts?.length||0}</small></div><div class="wallet-item"><b>Гарантии</b><small>${subs.warranties?.length||0}</small></div></div><div class="hero-actions"><button class="button white" data-wallet-qr>${icon('store')} Мои магазины</button><button class="button" data-wallet>${t('wallet')}</button></div></div>
-  ${appearanceSettings()}<section class="section"><div class="settings-list"><button class="list-card" data-account><span class="list-icon">${icon('user')}</span><span><b>${t('account')}</b><small>Имя, телефон и фото</small></span>${icon('chevron-right')}</button><button class="list-card" data-wallet><span class="list-icon">${icon('wallet-cards')}</span><span><b>${t('wallet')}</b><small>Талоны, скидки и гарантии</small></span>${icon('chevron-right')}</button><button class="list-card" data-saved-card><span class="list-icon">${icon('credit-card')}</span><span><b>Сохранённая карта</b><small>Карта для оплаты услуг</small></span>${icon('chevron-right')}</button><button class="list-card" data-interests><span class="list-icon">${icon('sparkles')}</span><span><b>Мои интересы</b><small>Три любимые категории</small></span>${icon('chevron-right')}</button><button class="list-card" data-action="language"><span class="list-icon">${icon('languages')}</span><span><b>${t('language')}</b><small>Русский, English, O‘zbekcha</small></span>${icon('chevron-right')}</button><button class="list-card" data-help><span class="list-icon">${icon('headphones')}</span><span><b>${t('help')}</b><small>Поиск, карта, каталог и безопасность</small></span>${icon('chevron-right')}</button><button class="list-card" data-logout><span class="list-icon">${icon('log-out')}</span><span><b>${t('logout')}</b></span></button></div></section>`;
+  $('#view').innerHTML=`${pageHead(t('profile'),'Izbor Market')}<div class="profile-hero"><div class="avatar">${state.user.avatar_url?`<img src="${esc(imageUrl(state.user.avatar_url))}" alt="">`:esc((state.user.name||'M')[0])}</div><div><h2>${esc(state.user.name)}</h2><p class="muted">${esc(state.user.phone||'')} · ID #${state.user.id}</p></div></div><div class="stat-grid"><div class="stat"><small>${t('favorites')}</small><b>${state.favorites.size}</b></div><div class="stat"><small>${t('wallet')}</small><b>${total}</b></div><div class="stat"><small>${t('profile')}</small><b>Активен</b></div></div>
+  <div class="wallet"><div class="wallet-head"><h2>IZBOR</h2><span>Предложения рядом</span></div><div class="wallet-grid"><div class="wallet-item"><b>Талоны</b><small>QR</small></div><div class="wallet-item"><b>Скидки</b><small>${subs.discounts?.length||0}</small></div><div class="wallet-item"><b>Гарантии</b><small>${subs.warranties?.length||0}</small></div></div><div class="hero-actions"><button class="button white" data-wallet-qr>${icon('store')} Мои магазины</button><button class="button" data-wallet>${t('wallet')}</button></div></div>
+  ${appearanceSettings()}<section class="section"><div class="settings-list"><button class="list-card" data-account><span class="list-icon">${icon('user')}</span><span><b>${t('account')}</b><small>Имя, телефон и фото</small></span>${icon('chevron-right')}</button><button class="list-card" data-wallet><span class="list-icon">${icon('wallet-cards')}</span><span><b>${t('wallet')}</b><small>Талоны, скидки и гарантии</small></span>${icon('chevron-right')}</button><button class="list-card" data-interests><span class="list-icon">${icon('sparkles')}</span><span><b>Мои интересы</b><small>Три любимые категории</small></span>${icon('chevron-right')}</button><button class="list-card" data-action="language"><span class="list-icon">${icon('languages')}</span><span><b>${t('language')}</b><small>Русский, English, O‘zbekcha</small></span>${icon('chevron-right')}</button><button class="list-card" data-help><span class="list-icon">${icon('headphones')}</span><span><b>${t('help')}</b><small>Поиск, карта, каталог и безопасность</small></span>${icon('chevron-right')}</button><button class="list-card" data-logout><span class="list-icon">${icon('log-out')}</span><span><b>${t('logout')}</b></span></button></div></section>`;
 }
 
 async function showWallet(){let d=await api('/users/me/subscriptions');const section=(title,items)=>`<section class="section"><h2>${title}</h2>${items.length?`<div class="settings-list">${items.map(x=>`<div class="list-card"><span class="list-icon">${icon('ticket-check')}</span><span><b>${esc(x.title||x.product_name||x.shop_name||title)}</b><small>${esc(x.description||x.status||'')}</small></span></div>`).join('')}</div>`:emptyState()}</section>`;openModal(`${section('Талоны',d.loyalty_cards||[])}${section('Скидки',d.discounts||[])}${section('Гарантии',d.warranties||[])}${section('Предложения',d.offers||[])}`,t('wallet'),true);}
@@ -423,11 +427,11 @@ function showAccount(){openModal(`<form id="accountForm" class="form"><div class
 async function showSavedCard(){localStorage.removeItem('mm_web_card');try{openModal(paymentStateView(await api('/marketplace/payments/capabilities')),'Оплата');}catch(error){toast(error.message,true);}}
 async function showInterests(){const current=await api('/users/me/preferences').catch(()=>({categories:[]}));const selected=new Set(current.categories||[]);openModal(`<form id="interestsForm" class="form"><p class="muted">${current.completed?'Выбранные категории используются для персональных рекомендаций.':'Выберите ровно три категории для персональных рекомендаций.'}</p><div class="chips">${state.categories.map(c=>`<label class="chip ${selected.has(c)?'active':''}"><input type="checkbox" name="category" value="${esc(c)}" ${selected.has(c)?'checked':''} ${current.completed?'disabled':''} hidden>${esc(c)}</label>`).join('')}</div>${current.completed?'':`<button class="button">${t('save')}</button>`}</form>`,'Мои интересы');}
 
-function showHelp(){const topics=[['search','Поиск и карта','Товары, магазины, расстояние и маршрут'],['archive','Товары, каталог и избранное','Цена, скидка, наличие и сохранённые товары'],['message-square','Связь с продавцом','Чат и фотографии'],['star','Отзывы и рейтинги','Оценка товара после покупки'],['shield','Безопасность и поддержка','Аккаунт, данные и помощь']];openModal(`<div class="settings-list">${topics.map(x=>`<div class="list-card"><span class="list-icon">${icon(x[0])}</span><span><b>${x[1]}</b><small>${x[2]}</small></span>${icon('chevron-right')}</div>`).join('')}</div>`,t('help'));}
+function showHelp(){const topics=[['search','Поиск и карта','Товары, магазины, расстояние и маршрут'],['archive','Товары, каталог и избранное','Цена, скидка, наличие и сохранённые товары'],['star','Отзывы и рейтинги','Оценка товара после покупки'],['shield','Безопасность и поддержка','Аккаунт, данные и помощь']];openModal(`<div class="settings-list">${topics.map(x=>`<div class="list-card"><span class="list-icon">${icon(x[0])}</span><span><b>${x[1]}</b><small>${x[2]}</small></span>${icon('chevron-right')}</div>`).join('')}</div>`,t('help'));}
 function showLanguage(){openModal(`<div class="settings-list">${[['ru','Русский'],['en','English'],['uz','O‘zbekcha']].map(([code,label])=>`<button class="list-card" data-language="${code}"><span class="list-icon">${code===state.language?icon('check'):icon('languages')}</span><span><b>${label}</b></span></button>`).join('')}</div>`,t('language'));}
 
 const buyerAuth=createBuyerAuth({api,apiBase:API_BASE,language:()=>state.language,escape:esc,openModal,closeModal,
-  async onSession(data,after){buyerSessionEpoch++;state.token=data.token;state.refreshToken=data.refresh_token||'';state.user=data.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));if(typeof after==='function')await after();else await navigate('home');}
+  async onSession(data,after){buyerSessionEpoch++;state.token=data.token;state.refreshToken=data.refresh_token||'';state.user=data.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));if(typeof after==='function')await after();else await navigate('home',null,{fromHistory:true});}
 });
 function showAuth(after){buyerAuth.open(after);}
 
@@ -455,6 +459,7 @@ async function showReviews(productId){const d=await api(`/products/${productId}/
 }
 
 function bindGlobalEvents(){
+  window.addEventListener('popstate',()=>{closeModal();const next=readRouteHash()||{route:'home',data:null};navigate(next.route,next.data,{fromHistory:true});});
   document.addEventListener('click',event=>{if(event.target.closest('[data-ranking]')){event.stopPropagation();navigate('ranking');}},true);
   document.addEventListener('click',async event=>{
     const moreProducts=event.target.closest('[data-load-more-products]');if(moreProducts){moreProducts.disabled=true;loadMoreProducts().catch(error=>{if(moreProducts.isConnected)moreProducts.disabled=false;toast(error.message,true);});return;}
