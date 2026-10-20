@@ -412,7 +412,7 @@ async function renderNotifications(){
 async function checkNotifications(){try{const d=await api('/users/me/notifications?limit=1');$('#notificationDot').classList.toggle('hidden',!Number(d.unread_count));}catch{}}
 
 async function renderProfile(){
-  if(!state.token){$('#view').innerHTML=`${pageHead(t('profile'),'Izbor Market')}<div class="empty"><div><img class="auth-logo" src="assets/izbor-icon-192.png" alt=""><h2>${t('hello')}</h2><button class="button" data-auth>${t('login')}</button></div></div>${appearanceSettings()}`;return;}
+  if(!state.token){$('#view').innerHTML=`${pageHead(t('profile'),'Izbor Market')}<div class="empty"><div><img class="auth-logo" src="assets/izbor-icon-192.png?v=20261020" alt=""><h2>${t('hello')}</h2><button class="button" data-auth>${t('login')}</button></div></div>${appearanceSettings()}`;return;}
   let subs={loyalty_cards:[],warranties:[],offers:[],discounts:[]};try{subs=await api('/users/me/subscriptions');}catch{}
   const total=(subs.loyalty_cards?.length||0)+(subs.warranties?.length||0)+(subs.discounts?.length||0);
   $('#view').innerHTML=`${pageHead(t('profile'),'Izbor Market')}<div class="profile-hero"><div class="avatar">${state.user.avatar_url?`<img src="${esc(imageUrl(state.user.avatar_url))}" alt="">`:esc((state.user.name||'M')[0])}</div><div><h2>${esc(state.user.name)}</h2><p class="muted">${esc(state.user.phone||'')} · ID #${state.user.id}</p></div></div><div class="stat-grid"><div class="stat"><small>${t('favorites')}</small><b>${state.favorites.size}</b></div><div class="stat"><small>${t('wallet')}</small><b>${total}</b></div><div class="stat"><small>${t('profile')}</small><b>Активен</b></div></div>
