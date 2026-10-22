@@ -36,6 +36,7 @@ function storedJson(key, fallback) {
 }
 for(const [language,copy] of Object.entries({ru:{allProducts:'Все товары',openStore:'Открыть магазин',guest:'Гость',reviewCount:'отзывов'},en:{allProducts:'All products',openStore:'Open store',guest:'Guest',reviewCount:'reviews'},uz:{allProducts:'Barcha mahsulotlar',openStore:'Do‘konni ochish',guest:'Mehmon',reviewCount:'sharh'}}))Object.assign(dictionary[language],copy);
 const state = {
+  webSession: false,
   route: 'home', token: localStorage.getItem('mm_web_token') || '',
   refreshToken: localStorage.getItem('izbor_web_refresh') || '',
   user: storedJson('mm_web_user', null),
@@ -67,7 +68,7 @@ async function api(path, options={}) {
   const requestEpoch=buyerSessionEpoch;
   if(!API_BASE)throw new Error('Адрес сервера не настроен. Обновите страницу или обратитесь в поддержку.');
   const {auth=true, _refreshed, ...requestOptions}=options;
-  const headers = {...(auth?authHeaders():{}), ...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}), ...(options.headers||{})};
+  const headers = {...(path.startsWith('/auth/')?{'X-Web-Client':'buyer'}:{}), ...(auth?authHeaders():{}), ...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}), ...(options.headers||{})};
   const controller=new AbortController();
   const externalSignal=requestOptions.signal;
   const abortExternal=()=>controller.abort();
@@ -75,7 +76,7 @@ async function api(path, options={}) {
   const timeout=setTimeout(()=>controller.abort(),API_REQUEST_TIMEOUT_MS);
   let response, data;
   try {
-    response = await fetch(`${API_BASE}${path}`, {...requestOptions, headers, signal:controller.signal});
+    response = await fetch(`${API_BASE}${path}`, {...requestOptions, headers, signal:controller.signal, credentials:'include'});
     data = await response.json().catch(error => {
       if (controller.signal.aborted) throw error;
       return {};
@@ -86,14 +87,27 @@ async function api(path, options={}) {
   } finally {
     clearTimeout(timeout);externalSignal?.removeEventListener('abort',abortExternal);
   }
-  if(response.status===401&&auth&&state.refreshToken&&!options._refreshed){
-    if(!refreshInFlight)refreshInFlight=api('/auth/refresh',{method:'POST',auth:false,body:JSON.stringify({refresh_token:state.refreshToken})}).then(value=>{if(requestEpoch!==buyerSessionEpoch)throw new Error('Сессия завершена.');state.token=value.token;state.refreshToken=value.refresh_token;persistSession();}).finally(()=>refreshInFlight=null);
-    await refreshInFlight;return api(path,{...options,_refreshed:true});
+  if(response.status===401&&auth&&requestEpoch!==buyerSessionEpoch)throw new Error('Аккаунт изменился. Повторите действие.');
+  if(response.status===401&&auth&&state.token&&!options._refreshed){
+    await refreshBuyerSession();return api(path,{...options,_refreshed:true});
   }
-  if (!response.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+  if (!response.ok) { const error=new Error(data.error || `Ошибка ${response.status}`);error.status=response.status;throw error; }
   return data;
 }
 
+async function refreshBuyerSession() {
+  if(!refreshInFlight){
+    const epoch=buyerSessionEpoch;
+    refreshInFlight=api('/auth/web/session',{method:'POST',auth:false,body:JSON.stringify(state.refreshToken?{refresh_token:state.refreshToken}:{})})
+      .then(value=>{
+        if(epoch!==buyerSessionEpoch)throw new Error('Сессия завершена.');
+        if(value.web_session!==true)throw new Error('Сначала обновите backend для сохранения входа.');
+        state.token=value.access_token||value.token;state.refreshToken='';state.webSession=true;persistSession();
+      }).catch(error=>{if(epoch===buyerSessionEpoch&&error.status===401)clearBuyerSession();throw error;})
+      .finally(()=>refreshInFlight=null);
+  }
+  return refreshInFlight;
+}
 function icon(name, size=20) { return `<i data-lucide="${name}" style="width:${size}px;height:${size}px"></i>`; }
 function refreshIcons() { window.lucide?.createIcons({attrs:{'stroke-width':2.1}}); }
 function toast(message, error=false) { const el=document.createElement('div'); el.className=`toast${error?' error':''}`; el.textContent=message; $('#toastRoot').append(el); setTimeout(()=>el.remove(),3200); }
@@ -163,10 +177,11 @@ async function bootstrap() {
   renderNavigation(); bindGlobalEvents();
   // Paint the public home immediately; network and session validation continue below.
   renderHome(true);
-  if(state.token) {
-    try { const me=await api('/users/me'); state.user=me.user; persistSession(); await loadFavorites(); }
-    catch { logout(false); }
-  }
+  try {
+    await refreshBuyerSession();
+    const me=await api('/users/me');state.user=me.user;persistSession();renderNavigation();
+    await loadFavorites().catch(error=>toast(error.message,true));
+  } catch(error) { if(error.status===401)clearBuyerSession();else toast(error.message,true); }
   const initialLoads=await Promise.allSettled([loadProducts(), loadShops(), loadCategories()]);
   const initialFailure=initialLoads.find(result=>result.status==='rejected');
   if(state.route==='home'){
@@ -251,8 +266,13 @@ async function loadProducts(params={}, {append=false}={}) {
 async function loadShops() { state.shops=await api('/shops');state.shopsLoaded=true;return state.shops; }
 async function loadCategories() { state.categories=await api('/products/categories');state.categoriesLoaded=true;return state.categories; }
 async function loadFavorites() { if(!state.token)return; const rows=await api(`/users/me/favorites?lang=${state.language}`); state.favorites=new Set(rows.map(x=>Number(x.id||x.product_id))); }
-function persistSession(){ localStorage.setItem('izbor_web_refresh',state.refreshToken||''); localStorage.setItem('mm_web_token',state.token); localStorage.setItem('mm_web_user',JSON.stringify(withoutMediaCapabilities(state.user))); localStorage.setItem('mm_web_language',state.language); }
-function logout(render=true){ buyerSessionEpoch++;const token=state.token;if(token)fetch(`${API_BASE}/auth/logout`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:'{}'}).catch(()=>{});state.refreshToken='';localStorage.removeItem('izbor_web_refresh');state.token='';state.user=null;state.favorites.clear();clearPrivateMediaImages();localStorage.removeItem('mm_web_token');localStorage.removeItem('mm_web_user');if(render)navigate('home');renderNavigation(); }
+function persistSession(){ if(state.webSession){localStorage.removeItem('izbor_web_refresh');localStorage.removeItem('mm_web_token');} localStorage.setItem('mm_web_user',JSON.stringify(withoutMediaCapabilities(state.user))); localStorage.setItem('mm_web_language',state.language); }
+function clearBuyerSession(){buyerSessionEpoch++;state.token='';state.refreshToken='';state.webSession=false;state.user=null;state.favorites.clear();clearPrivateMediaImages();for(const key of ['izbor_web_refresh','mm_web_token','mm_web_user'])localStorage.removeItem(key);renderNavigation();}
+async function logout(render=true){
+  try{await api('/auth/web/logout',{method:'POST',auth:false,body:'{}'});}
+  catch(error){toast(error.message,true);return;}
+  clearBuyerSession();if(render)navigate('home');
+}
 
 function emptyState(ico='package-open', text=t('empty')) { return `<div class="empty"><div>${icon(ico,52)}<h3>${esc(text)}</h3></div></div>`; }
 function errorState(error) { return `<div class="empty"><div>${icon('triangle-alert',52)}<h3>${esc(error?.message||'Не удалось загрузить данные.')}</h3><button class="button" data-retry-route>${t('retry')}</button></div></div>`; }
@@ -577,7 +597,7 @@ function showHelp(){const topics=[['search','Поиск и карта','Това
 function showLanguage(){openModal(`<div class="settings-list">${[['ru','Русский'],['en','English'],['uz','O‘zbekcha']].map(([code,label])=>`<button class="list-card" data-language="${code}"><span class="list-icon">${code===state.language?icon('check'):icon('languages')}</span><span><b>${label}</b></span></button>`).join('')}</div>`,t('language'));}
 
 const buyerAuth=createBuyerAuth({api,apiBase:API_BASE,language:()=>state.language,escape:esc,openModal,closeModal,
-  async onSession(data,after){buyerSessionEpoch++;state.token=data.token;state.refreshToken=data.refresh_token||'';state.user=data.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));if(typeof after==='function')await after();else await navigate('home',null,{fromHistory:true});}
+  async onSession(data,after){if(data.web_session!==true)throw new Error('Сначала обновите backend для сохранения входа.');buyerSessionEpoch++;state.webSession=true;state.token=data.token;state.refreshToken='';state.user=data.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));if(typeof after==='function')await after();else await navigate('home',null,{fromHistory:true});}
 });
 function showAuth(after){buyerAuth.open(after);}
 
