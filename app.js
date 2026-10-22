@@ -1,3 +1,5 @@
+import {productImageSources,fallbackProductImage} from './shared/product-images.js';
+import {mountNavigationMotion} from './shared/motion.js';
 import {mountChats} from './shared/chats.js';
 import {routePreviewMarkup,mountRoutePreview} from './shared/route-preview.js';
 import { translateUi } from "./shared/ui-copy.js";
@@ -59,7 +61,7 @@ const categoryTitle=value=>categoryNames[value]?.[state.language==='en'?0:state.
 const imageUrl = (raw) => mediaUrl(raw,API_BASE) || 'assets/product-placeholder.svg';
 const authHeaders = () => state.token ? {Authorization:`Bearer ${state.token}`} : {};
 
-installPrivateMediaImages({request: api, baseUrl: API_BASE});
+installPrivateMediaImages({request: api, baseUrl: API_BASE, onUnavailable: fallbackProductImage});
 let refreshInFlight=null,buyerSessionEpoch=0;
 async function api(path, options={}) {
   const requestEpoch=buyerSessionEpoch;
@@ -105,8 +107,16 @@ const navItems = [
 function renderNavigation() {
   document.documentElement.lang=state.language;
   const html = navItems.map(([route,ico,label])=>`<button class="nav-button ${(state.route===route || (route==='home'&&['catalog','search','product','store'].includes(state.route)))?'active':''}" data-route="${route}">${icon(ico)}<span>${t(label)}</span></button>`).join('');
-  $('#desktopNav').innerHTML = html;
-  $('#mobileNav').innerHTML = html;
+  for (const [id,compact] of [['#desktopNav',false],['#mobileNav',true]]) {
+    const nav = $(id);
+    if (!nav.querySelector('[data-route]')) nav.innerHTML = html;
+    for (const [route,ico,label] of navItems) {
+      const button = nav.querySelector(`[data-route="${route}"]`);
+      button.classList.toggle('active',state.route===route || (route==='home'&&['catalog','search','product','store'].includes(state.route)));
+      button.innerHTML = `${icon(ico)}<span>${t(label)}</span>`;
+    }
+    mountNavigationMotion(nav,{compact});
+  }
   $$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));
   $$('.catalog-shortcut').forEach(el=>el.setAttribute('aria-label',t('catalog')));
   $$('[data-i18n-placeholder]').forEach(el=>el.placeholder=t(el.dataset.i18nPlaceholder));
@@ -248,6 +258,11 @@ function emptyState(ico='package-open', text=t('empty')) { return `<div class="e
 function errorState(error) { return `<div class="empty"><div>${icon('triangle-alert',52)}<h3>${esc(error?.message||'Не удалось загрузить данные.')}</h3><button class="button" data-retry-route>${t('retry')}</button></div></div>`; }
 function pageHead(title, subtitle=''){return `<div class="page-head"><div>${subtitle?`<p class="eyebrow">${esc(subtitle)}</p>`:''}<h1>${esc(title)}</h1></div></div>`;}
 
+function productImage(p, className, alt='', index=0, lazy=false) {
+  const sources=productImageSources(p,API_BASE);
+  const active=sources[index]||sources[0]||'assets/product-placeholder.svg';
+  return `<img class="${className}" src="${esc(active)}" data-product-photo data-photo-sources="${esc(JSON.stringify(sources))}" alt="${esc(alt)}" ${lazy?'loading="lazy"':''} decoding="async" referrerpolicy="no-referrer">`;
+}
 function productCard(p) {
   const id=Number(p.id), saved=state.favorites.has(id);
   const {discount,salePrice,oldPrice}=productOfferPricing(p);
@@ -257,7 +272,7 @@ function productCard(p) {
   const reviews=Number(p.product_reviews_count??p.reviews_count??0);
   const canRoute=Number(p.shop_id)>0;
   return `<article class="product-card" data-product="${id}">
-    <div class="product-photo"><button type="button" class="product-open" data-product="${id}" aria-label="${esc(p.title)}"><img class="product-image" src="${esc(imageUrl(p.image_url || p.image_urls?.[0]))}" alt="" loading="lazy" decoding="async" /></button>
+    <div class="product-photo"><button type="button" class="product-open" data-product="${id}" aria-label="${esc(p.title)}">${productImage(p,'product-image','',0,true)}</button>
     ${discount>0?`<span class="discount">-${Math.round(discount)}%</span>`:''}
     <button class="favorite-button ${saved?'active':''}" data-favorite="${id}" aria-pressed="${saved}" aria-label="${esc(t('favorites'))}: ${esc(p.title||'')}">${icon('heart',20)}</button></div>
     <div class="product-body">${placementLabel(p)}<h3><button class="product-title" data-product="${id}">${esc(p.title||'Товар')}</button></h3><div class="product-meta">${esc(p.shop_name||p.category||'')}</div>
@@ -368,12 +383,11 @@ async function renderProductDetails(id){
 function renderProductDetailsBody(){
   const p=state.activeProduct; if(!p)return;
   const {salePrice,oldPrice}=productOfferPricing(p);
-  const images=[...new Set([...(Array.isArray(p.image_urls)?p.image_urls:[]),p.image_url].filter(Boolean))];
-  const active=images[state.productImageIndex]||p.image_url;
+  const images=productImageSources(p,API_BASE).filter(src=>src!==mediaUrl(p.thumbnail_url,API_BASE)||src===mediaUrl(p.image_url,API_BASE));
   const specs=[...productSpecifications(p,state.language),[t('availability'),t(productAvailability(p))]];
   $('#view').innerHTML=`<button class="back-link" data-back-catalog>${icon('arrow-left')} ${t('backToProducts')}</button>
-    <section class="product-detail-page"><div class="product-gallery"><img class="detail-image" src="${esc(imageUrl(active))}" alt="${esc(p.title)}">${images.length>1?`<div class="gallery-thumbs">${images.map((src,index)=>`<button class="gallery-thumb ${index===state.productImageIndex?'active':''}" data-product-image="${index}" aria-label="${esc(t('imageLabel'))} ${index+1}"><img src="${esc(imageUrl(src))}" alt=""></button>`).join('')}</div>`:''}</div>
-    <div class="detail-info"><p class="eyebrow">${esc(categoryTitle(p.category)||'IZBOR')}</p><h1>${esc(p.title||'Товар')}</h1><p class="muted">${esc(p.shop_name||'Магазин')}</p><div class="rating">${icon('star')} <b>${Number(p.product_average_rating||p.average_rating||0).toFixed(1)}</b><span>(${Number(p.product_reviews_count||p.reviews_count||0)} ${t('reviewCount')})</span></div><div class="price-row detail-price"><span class="price">${money(salePrice)}</span>${oldPrice>0?`<span class="old-price">${money(oldPrice)}</span>`:''}</div><div class="hero-actions"><button class="button" data-store="${Number(p.shop_id)}">${icon('store')} ${t('openStore')}</button><button class="button soft" data-store-route="${Number(p.shop_id)}">${icon('route')} ${t('route')}</button><button class="button soft" data-product-chat="${Number(p.shop_id)}">${icon('message-circle')} ${t('write')}</button><button class="button ghost" data-product-reviews="${Number(p.id)}">${icon('star')} ${t('reviews')}</button></div>${buyerBranchOffers(p)}<section class="detail-section"><h2>${t('description')}</h2><p class="detail-description">${esc(p.description||t('noDescription'))}</p></section>${specs.length?`<section class="detail-section"><h2>${t('specifications')}</h2><div class="spec-list">${specs.map(([label,value])=>`<div><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></section>`:''}</div></section>`;
+    <section class="product-detail-page"><div class="product-gallery"><div class="detail-photo">${productImage({...p,image_url:images[state.productImageIndex]||p.image_url},'detail-image',p.title)}</div>${images.length>1?`<div class="gallery-thumbs">${images.map((src,index)=>`<button class="gallery-thumb ${index===state.productImageIndex?'active':''}" data-product-image="${index}" aria-label="${esc(t('imageLabel'))} ${index+1}">${productImage({image_url:src},'gallery-image')}</button>`).join('')}</div>`:''}</div>
+    <div class="detail-info"><p class="eyebrow">${esc(categoryTitle(p.category)||'IZBOR')}</p><h1>${esc(p.title||'Товар')}</h1><p class="muted">${esc(p.shop_name||'Магазин')}</p><div class="rating">${icon('star')} <b>${Number(p.product_average_rating||p.average_rating||0).toFixed(1)}</b><span>(${Number(p.product_reviews_count||p.reviews_count||0)} ${t('reviewCount')})</span></div><div class="price-row detail-price"><span class="price">${money(salePrice)}</span>${oldPrice>0?`<span class="old-price">${money(oldPrice)}</span>`:''}</div><div class="hero-actions"><button class="button" data-store="${Number(p.shop_id)}">${icon('store')} ${t('openStore')}</button><button class="button soft" data-store-route="${Number(p.shop_id)}">${icon('route')} ${t('route')}</button><button class="button soft" data-product-chat="${Number(p.shop_id)}">${icon('message-circle')} ${t('write')}</button><button class="button ghost" data-product-reviews="${Number(p.id)}">${icon('star')} ${t('reviews')}</button></div>${buyerBranchOffers(p)}<section class="detail-section"><h2>${t('description')}</h2><p class="detail-description">${esc(p.description||t('noDescription'))}</p></section>${specs.length?`<section class="detail-section"><h2>${t('specifications')}</h2><dl class="spec-list">${specs.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></section>`:''}</div></section>`;
 }
 
 function buyerBranchOffers(p){

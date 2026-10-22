@@ -13,9 +13,8 @@ async function load(){
   let store;try{store=new URL(configured);}catch{}
   if(store?.protocol==='https:'&&store.hostname==='apps.apple.com'&&!store.username&&!store.password&&/\/id[0-9]+(?:$|\/)/.test(store.pathname)){
    const button=document.querySelector('#download');button.href=store.href;button.hidden=false;document.querySelector('#release').textContent='После установки повторно отсканируйте QR — откроется этот магазин.';
-   if(/iPhone|iPad|iPod/.test(navigator.userAgent)){location.replace(store.href);return;}
   }
-  // The public catalog is the fallback when no published iOS app is configured.
+  // The OS handles verified App/Universal Links. Every browser visitor gets the catalog, never a forced download.
   location.replace(catalog.href);
  }catch(error){status.textContent=error.message==='Магазин не найден.'?error.message:'Не удалось открыть магазин. Проверьте соединение и повторите.';retry.hidden=false;}
 }
