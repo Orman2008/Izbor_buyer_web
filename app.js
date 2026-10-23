@@ -568,64 +568,41 @@ async function renderNotifications(){
 }
 async function checkNotifications(){try{const d=await api('/users/me/notifications?limit=1');$('#notificationDot').classList.toggle('hidden',!Number(d.unread_count));}catch{}}
 
-function sellerProfileText(ru,en,uz){return state.language==='en'?en:state.language==='uz'?uz:ru;}
-function sellerProfileMenu({symbol,title,subtitle='',route,attributes='',href='',destructive=false,accent=false}){
-  const destination=href||(route?`https://seller.izbor.uz/#${encodeURIComponent(route)}`:'');
-  const tag=destination?'a':'button';
-  const action=destination?`href="${esc(destination)}"`:`type="button" ${attributes}`;
-  return `<${tag} class="seller-profile-menu${destructive?' is-destructive':''}${accent?' is-purple':''}" ${action}><span class="seller-profile-menu-icon">${icon(symbol,21)}</span><span class="seller-profile-menu-copy"><strong>${esc(title)}</strong>${subtitle?`<small>${esc(subtitle)}</small>`:''}</span>${icon('chevron-right',22)}</${tag}>`;
+function buyerProfileText(ru,en,uz){return state.language==='en'?en:state.language==='uz'?uz:ru;}
+function buyerProfileMenu({symbol,title,subtitle='',attributes='',href='',destructive=false}){
+  const tag=href?'a':'button',action=href?`href="${esc(href)}"`:`type="button" ${attributes}`;
+  return `<${tag} class="buyer-profile-menu${destructive?' is-destructive':''}" ${action}><span class="buyer-profile-menu-icon">${icon(symbol,21)}</span><span class="buyer-profile-menu-copy"><strong>${esc(title)}</strong>${subtitle?`<small>${esc(subtitle)}</small>`:''}</span>${icon('chevron-right',22)}</${tag}>`;
 }
 async function renderProfile(){
-  const tr=sellerProfileText,epoch=buyerSessionEpoch;
-  let shop=null,shopError=false;
-  if(state.token){
-    try{const result=await api('/users/me/shops');const stores=Array.isArray(result)?result:result.items||[];shop=stores[0]||null;}
-    catch{shopError=true;}
-  }
-  if(state.route!=='profile')return;
-  if(epoch!==buyerSessionEpoch)return renderProfile();
-  const specialization={TECH:tr('Техника и электроника','Technology and electronics','Texnika va elektronika'),CLOTHING:tr('Одежда','Clothing','Kiyim'),CONSTRUCTION:tr('Стройматериалы','Building materials','Qurilish materiallari'),FURNITURE:tr('Мебель','Furniture','Mebel'),RESTAURANT:tr('Ресторан','Restaurant','Restoran'),COFFEE:tr('Кофейня','Coffee shop','Qahvaxona'),PHARMACY:tr('Аптека','Pharmacy','Dorixona'),GROCERY:tr('Продукты','Groceries','Oziq-ovqat'),BEAUTY:tr('Красота','Beauty','Go‘zallik'),HOME:tr('Дом','Home','Uy'),HAIRDRESSER:tr('Парикмахерская','Hairdresser','Sartaroshxona'),GENERAL:tr('Другое','Other','Boshqa')};
-  const shopName=shop?.name||tr('Мой магазин','My store','Mening do‘konim');
-  const phone=shop?.phone||tr('Номер магазина не указан','Store number is not set','Do‘kon raqami ko‘rsatilmagan');
-  const count=shop?.product_count===undefined||shop?.product_count===null?'—':`${Number(shop.product_count)} ${tr('товаров','products','ta mahsulot')}`;
-  const plan=shop?String(shop.current_plan||shop.subscription_tier||'Free').replaceAll('_',' '):'—';
-  const section=(title,content)=>`<section class="seller-profile-section"><h2>${esc(title)}</h2><div class="seller-profile-menu-list">${content}</div></section>`;
-  const menu=sellerProfileMenu;
-  $('#view').innerHTML=`<div class="seller-style-profile">
-    <header class="seller-profile-heading"><h1>${t('profile')}</h1></header>
-    <a class="seller-profile-identity" href="https://seller.izbor.uz/#store" aria-label="${esc(tr('Информация о магазине','Store information','Do‘kon haqida ma’lumot'))}">
-      <span class="seller-profile-avatar">${shop?.logo_url?`<img src="${esc(imageUrl(shop.logo_url))}" alt="${esc(shopName)}">`:icon('store',34)}<span class="seller-profile-camera">${icon('camera',15)}</span></span>
-      <span class="seller-profile-identity-copy"><strong>${esc(shopName)}</strong><span>${esc(phone)}</span><small>${esc(specialization[shop?.specialization_code||'GENERAL']||shop?.specialization||specialization.GENERAL)}</small></span>
-    </a>
-    ${!state.token?`<button class="button seller-profile-login" data-auth>${esc(tr('Войти в аккаунт','Sign in','Akkauntga kirish'))}</button>`:''}
-    ${shopError?`<p class="seller-profile-notice" role="status">${esc(tr('Не удалось загрузить данные магазина.','Could not load store information.','Do‘kon ma’lumotlarini yuklab bo‘lmadi.'))} <button type="button" data-retry-route>${t('retry')}</button></p>`:''}
-    <div class="seller-profile-stats"><div><span>${esc(tr('Всего товаров','Total products','Jami mahsulotlar'))}</span><strong>${esc(count)}</strong></div><a href="https://seller.izbor.uz/#plan"><span>${esc(tr('Тариф','Plan','Tarif'))}</span><strong>${esc(plan)}</strong></a></div>
-    ${section(tr('МАГАЗИН И ТАРИФ','STORE & PLAN','DO‘KON VA TARIF'),menu({symbol:'store',title:tr('Информация о магазине','Store information','Do‘kon haqida ma’lumot'),subtitle:tr('Название, адрес, телефон и фото','Name, address, phone and photo','Nomi, manzili, telefoni va rasmi'),route:'store'}))}
-    ${section(tr('УПРАВЛЕНИЕ','MANAGEMENT','BOSHQARUV'),[
-      menu({symbol:'store',title:tr('Филиалы','Locations','Filiallar'),subtitle:tr('Основной магазин и точки сети · до 15','Main store and locations · up to 15','Asosiy do‘kon va tarmoq nuqtalari · 15 tagacha'),route:'branches'}),
-      menu({symbol:'route',title:tr('Навигация для покупателей','Buyer navigation','Xaridorlar uchun navigatsiya'),subtitle:tr('Маршрут до магазина','Route to the store','Do‘kongacha yo‘nalish'),route:'photo-navigation'}),
-      menu({symbol:'users',title:tr('Сотрудники','Employees','Xodimlar'),subtitle:tr('Команда магазина','Store team','Do‘kon jamoasi'),route:'team',accent:true}),
-      menu({symbol:'shield-check',title:tr('Разрешения','Permissions','Ruxsatlar'),subtitle:tr('Роли и уровни доступа','Roles and access levels','Rollar va kirish darajalari'),route:'team'}),
-      menu({symbol:'languages',title:tr('Язык интерфейса','App language','Interfeys tili'),subtitle:'Русский, English, O‘zbekcha',attributes:'data-action="language"'}),
+  const tr=buyerProfileText,menu=buyerProfileMenu,loggedIn=Boolean(state.token);
+  const section=(title,content)=>`<section class="buyer-profile-section"><h2>${esc(title)}</h2><div class="buyer-profile-menu-list">${content}</div></section>`;
+  const name=state.user?.name||tr('Покупатель','Buyer','Xaridor');
+  const identity=loggedIn?`<button type="button" class="buyer-profile-identity" data-account>
+    <span class="buyer-profile-avatar">${state.user?.avatar_url?`<img src="${esc(imageUrl(state.user.avatar_url))}" alt="${esc(name)}">`:icon('user-round',38)}<span class="buyer-profile-camera">${icon('camera',15)}</span></span>
+    <span class="buyer-profile-identity-copy"><strong>${esc(name)}</strong><span>${esc(state.user?.phone||tr('Номер пользователя не указан','Phone number is not set','Telefon raqami ko‘rsatilmagan'))}</span><small>ID: #${esc(state.user?.id||'—')}</small></span>
+  </button>`:`<section class="buyer-profile-guest">${icon('user-round',46)}<h2>${esc(tr('Войдите в Izbor','Sign in to Izbor','Izborga kiring'))}</h2><p>${esc(tr('Сохраняйте товары, общайтесь с магазинами и используйте персональные функции.','Save products, message stores and use personal features.','Mahsulotlarni saqlang, do‘konlar bilan yozishing va shaxsiy funksiyalardan foydalaning.'))}</p><button class="button" data-auth>${t('login')}</button></section>`;
+  $('#view').innerHTML=`<div class="buyer-style-profile"><header class="buyer-profile-heading"><h1>${t('profile')}</h1></header>${identity}
+    ${loggedIn?`<section class="buyer-profile-wallet"><header>${icon('wallet',24)}<h2>${esc(tr('Кошелёк Izbor','Izbor Wallet','Izbor Hamyon'))}</h2></header><p>${esc(tr('Талоны, скидки, гарантии и предложения магазинов','Loyalty cards, discounts, warranties and store offers','Talonlar, chegirmalar, kafolatlar va do‘kon takliflari'))}</p><div><button type="button" data-wallet>${esc(tr('Открыть кошелёк','Open wallet','Hamyonni ochish'))}${icon('chevron-right',18)}</button><button type="button" data-wallet-qr>${icon('store',18)}${esc(tr('Мои магазины','My stores','Mening do‘konlarim'))}</button></div></section>`:''}
+    ${section(tr('НАСТРОЙКИ И ПРЕДПОЧТЕНИЯ','SETTINGS','SOZLAMALAR'),[
+      loggedIn?menu({symbol:'user-round',title:t('account'),subtitle:tr('Имя, телефон и фото','Name, phone and photo','Ism, telefon va rasm'),attributes:'data-account'}):'',
+      loggedIn?menu({symbol:'heart',title:t('favorites'),attributes:'data-route="favorites"'}):'',
+      loggedIn?menu({symbol:'sparkles',title:tr('Мои интересы','My interests','Qiziqishlarim'),subtitle:tr('Категории для рекомендаций','Categories for recommendations','Tavsiyalar uchun toifalar'),attributes:'data-interests'}):'',
+      menu({symbol:'languages',title:tr('Язык интерфейса','App language','Ilova tili'),subtitle:'Русский, English, O‘zbekcha',attributes:'data-action="language"'}),
       menu({symbol:'palette',title:tr('Оформление','Appearance','Ko‘rinish'),subtitle:tr('Системная, светлая или тёмная тема','System, light or dark theme','Tizim, yorug‘ yoki qorong‘i mavzu'),attributes:'data-appearance-open'}),
     ].join(''))}
-    ${section(tr('ПОМОЩЬ И СЕРВИС','HELP & SERVICE','YORDAM VA XIZMAT'),[
-      menu({symbol:'headset',title:tr('Справка для продавцов','Seller help','Sotuvchilar uchun yordam'),subtitle:tr('Ответы по работе приложения','Answers about the app','Ilova bo‘yicha javoblar'),attributes:'data-seller-profile-help'}),
-      menu({symbol:'shield',title:tr('Политика конфиденциальности','Privacy policy','Maxfiylik siyosati'),href:`${API_BASE}/legal/seller/privacy`}),
-      menu({symbol:'file-text',title:tr('Условия для продавцов','Seller terms','Sotuvchilar shartlari'),href:`${API_BASE}/legal/seller/terms`}),
+    ${section(tr('ПОМОЩЬ И СЕРВИС','HELP AND SERVICE','YORDAM VA XIZMAT'),[
+      menu({symbol:'headset',title:t('help'),attributes:'data-help'}),
+      menu({symbol:'shield',title:tr('Политика конфиденциальности','Privacy policy','Maxfiylik siyosati'),href:`${API_BASE}/legal/buyer/privacy`}),
+      menu({symbol:'file-text',title:tr('Условия использования','Terms of use','Foydalanish shartlari'),href:`${API_BASE}/legal/buyer/terms`}),
+      menu({symbol:'store',title:tr('Стать продавцом','Become a seller','Sotuvchi bo‘lish'),href:'https://seller.izbor.uz'}),
     ].join(''))}
-    ${section(tr('АККАУНТ','ACCOUNT','AKKAUNT'),state.token?menu({symbol:'log-out',title:tr('Выйти из аккаунта','Sign out','Akkauntdan chiqish'),attributes:'data-profile-signout',destructive:true}):menu({symbol:'log-in',title:tr('Войти в аккаунт','Sign in','Akkauntga kirish'),attributes:'data-auth'}))}
+    ${loggedIn?section(tr('АККАУНТ','ACCOUNT','AKKAUNT'),menu({symbol:'log-out',title:tr('Выйти из аккаунта','Sign out','Akkauntdan chiqish'),attributes:'data-profile-signout',destructive:true})):''}
   </div>`;
   refreshIcons();
 }
-function showSellerProfileHelp(){
-  const tr=sellerProfileText;
-  const entries=[['log-in',tr('Начало работы и доступ','Getting started and access','Boshlash va kirish'),tr('Регистрация, роли и подключение к магазину','Registration, roles and joining a store','Ro‘yxatdan o‘tish, rollar va do‘konga ulanish'),'dashboard'],['package',tr('Товары и скидки','Products and discounts','Mahsulotlar va chegirmalar'),tr('Карточки, цены, категории и наличие','Listings, prices, categories and availability','Kartalar, narxlar, toifalar va mavjudlik'),'products'],['users',tr('Сотрудники и разрешения','Employees and permissions','Xodimlar va ruxsatlar'),tr('Команда магазина и уровни доступа','Store team and access levels','Do‘kon jamoasi va kirish darajalari'),'team'],['credit-card',tr('Тариф','Plan','Tarif'),tr('Условия и возможности тарифа','Plan terms and features','Tarif shartlari va imkoniyatlari'),'plan']];
-  openModal(`<div class="seller-profile-menu-list">${entries.map(([symbol,title,subtitle,route])=>sellerProfileMenu({symbol,title,subtitle,route})).join('')}${sellerProfileMenu({symbol:'headset',title:tr('Написать в поддержку','Contact support','Yordamga yozish'),href:'https://t.me/izbor_support_bot'})}</div>`,tr('Справка для продавцов','Seller help','Sotuvchilar uchun yordam'));
-}
 function confirmProfileSignout(){
-  const tr=sellerProfileText;
-  openModal(`<div class="seller-profile-signout"><span class="seller-profile-signout-icon">${icon('log-out',27)}</span><p>${esc(tr('Вы сможете войти снова по номеру телефона и коду.','You can sign in again with your phone number and a code.','Telefon raqamingiz va kod orqali qayta kirishingiz mumkin.'))}</p><div><button type="button" class="button soft" data-close-modal>${esc(tr('Отмена','Cancel','Bekor qilish'))}</button><button type="button" class="button" data-logout>${t('logout')}</button></div></div>`,t('logout'));
+  const tr=buyerProfileText;
+  openModal(`<div class="buyer-profile-signout"><span class="buyer-profile-signout-icon">${icon('log-out',27)}</span><p>${esc(tr('Вы сможете войти снова по номеру телефона и коду.','You can sign in again with your phone number and a code.','Telefon raqamingiz va kod orqali qayta kirishingiz mumkin.'))}</p><div><button type="button" class="button soft" data-close-modal>${esc(tr('Отмена','Cancel','Bekor qilish'))}</button><button type="button" class="button" data-logout>${t('logout')}</button></div></div>`,t('logout'));
 }
 
 async function showWallet(){
@@ -705,7 +682,6 @@ function bindGlobalEvents(){
     const chatStart=event.target.closest('[data-product-chat]');if(chatStart){startChat(Number(chatStart.dataset.productChat)).catch(error=>toast(error.message,true));return;}
     if(event.target.closest('[data-auth]')){showAuth();return;}
     if(event.target.closest('[data-profile-signout]')){confirmProfileSignout();return;}
-    if(event.target.closest('[data-seller-profile-help]')){showSellerProfileHelp();return;}
     if(event.target.closest('[data-logout]')){closeModal();logout();return;}
     if(event.target.closest('[data-wallet-qr]')){showQr().catch(e=>toast(e.message,true));return;}
     if(event.target.closest('[data-wallet]')){showWallet().catch(e=>toast(e.message,true));return;}
