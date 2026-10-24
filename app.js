@@ -9,7 +9,7 @@ import {mountStoreMap} from './shared/maps.js';
 import './shared/appearance.js';
 import {ensureLegalAcceptance,placementLabel,rankingHelp,paymentStateView} from './shared/compliance.js';
 import {mediaUrl,installPrivateMediaImages,withoutMediaCapabilities,clearPrivateMediaImages} from './shared/api.js';
-import {createBuyerAuth} from './buyer-auth.js?v=20261003-1';
+import {createBuyerAuth} from './buyer-auth.js?v=20261023-otp';
 function resolveApiBaseUrl(configuredUrl, location) {
   const raw=String(configuredUrl||'').trim().replace(/\/+$/,'');
   if(!raw && !['localhost','127.0.0.1','[::1]','::1'].includes(location?.hostname))return '';
@@ -63,7 +63,7 @@ const imageUrl = (raw) => mediaUrl(raw,API_BASE) || 'assets/product-placeholder.
 const authHeaders = () => state.token ? {Authorization:`Bearer ${state.token}`} : {};
 
 installPrivateMediaImages({request: api, baseUrl: API_BASE, onUnavailable: fallbackProductImage});
-let refreshInFlight=null,buyerSessionEpoch=0;
+let refreshInFlight=null,buyerSessionEpoch=0,buyerStartupRestore=null;
 async function api(path, options={}) {
   const requestEpoch=buyerSessionEpoch;
   if(!API_BASE)throw new Error('Адрес сервера не настроен. Обновите страницу или обратитесь в поддержку.');
@@ -177,11 +177,18 @@ async function bootstrap() {
   renderNavigation(); bindGlobalEvents();
   // Paint the public home immediately; network and session validation continue below.
   renderHome(true);
+  const bootstrapEpoch=buyerSessionEpoch;
   try {
-    await refreshBuyerSession();
-    const me=await api('/users/me');state.user=me.user;persistSession();renderNavigation();
-    await loadFavorites().catch(error=>toast(error.message,true));
-  } catch(error) { if(error.status===401)clearBuyerSession();else toast(error.message,true); }
+    buyerStartupRestore=refreshBuyerSession();
+    await buyerStartupRestore;
+    if(bootstrapEpoch===buyerSessionEpoch){
+      const me=await api('/users/me');
+      if(bootstrapEpoch===buyerSessionEpoch){state.user=me.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));}
+    }
+  } catch(error) {
+    // refreshBuyerSession already handles its own401. Never erase a newer login.
+    if(bootstrapEpoch===buyerSessionEpoch&&error.status!==401)toast(error.message,true);
+  } finally { buyerStartupRestore=null; }
   const initialLoads=await Promise.allSettled([loadProducts(), loadShops(), loadCategories()]);
   const initialFailure=initialLoads.find(result=>result.status==='rejected');
   if(state.route==='home'){
@@ -265,7 +272,7 @@ async function loadProducts(params={}, {append=false}={}) {
 }
 async function loadShops() { state.shops=await api('/shops');state.shopsLoaded=true;return state.shops; }
 async function loadCategories() { state.categories=await api('/products/categories');state.categoriesLoaded=true;return state.categories; }
-async function loadFavorites() { if(!state.token)return; const rows=await api(`/users/me/favorites?lang=${state.language}`); state.favorites=new Set(rows.map(x=>Number(x.id||x.product_id))); }
+async function loadFavorites() { if(!state.token)return; const epoch=buyerSessionEpoch;const rows=await api(`/users/me/favorites?lang=${state.language}`);if(epoch===buyerSessionEpoch)state.favorites=new Set(rows.map(x=>Number(x.id||x.product_id))); }
 function persistSession(){ if(state.webSession){localStorage.removeItem('izbor_web_refresh');localStorage.removeItem('mm_web_token');} localStorage.setItem('mm_web_user',JSON.stringify(withoutMediaCapabilities(state.user))); localStorage.setItem('mm_web_language',state.language); }
 function clearBuyerSession(){buyerSessionEpoch++;state.token='';state.refreshToken='';state.webSession=false;state.user=null;state.favorites.clear();clearPrivateMediaImages();for(const key of ['izbor_web_refresh','mm_web_token','mm_web_user'])localStorage.removeItem(key);renderNavigation();}
 async function logout(render=true){
@@ -627,7 +634,14 @@ function showLanguage(){openModal(`<div class="settings-list">${[['ru','Русс
 const buyerAuth=createBuyerAuth({api,apiBase:API_BASE,language:()=>state.language,escape:esc,openModal,closeModal,
   async onSession(data,after){if(data.web_session!==true)throw new Error('Сначала обновите backend для сохранения входа.');buyerSessionEpoch++;state.webSession=true;state.token=data.token;state.refreshToken='';state.user=data.user;persistSession();renderNavigation();await loadFavorites().catch(error=>toast(error.message,true));if(typeof after==='function')await after();else await navigate('home',null,{fromHistory:true});}
 });
-function showAuth(after){buyerAuth.open(after);}
+async function showAuth(after){
+  if(buyerStartupRestore){
+    try{await buyerStartupRestore;}
+    catch(error){if(error.status!==401){toast(error.message,true);return;}}
+  }
+  if(state.token){if(typeof after==='function')await after();else await navigate('profile');return;}
+  buyerAuth.open(after);
+}
 
 let modalReturnFocus,modalCleanup=()=>{};
 function openModal(content,title='',wide=false,{preserveAuth=false}={}){

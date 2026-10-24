@@ -1,5 +1,5 @@
 import {authText,authErrorText,translateAuth} from './shared/auth-copy.js';
-import {otpMarkup,bindOtp,resendCountdown} from './shared/auth-otp.js';
+import {otpMarkup,bindOtp,resendCountdown} from './shared/auth-otp.js?v=20261023-otp';
 import {createTelegramWebLogin} from './shared/telegram-auth.js';
 // The buyer app uses phone verification for both sign-in and registration.
 export function createBuyerAuth({api, apiBase, language, escape, openModal, closeModal, onSession}) {
@@ -15,14 +15,16 @@ export function createBuyerAuth({api, apiBase, language, escape, openModal, clos
     } else if (flow.stage === 'phone') {
       fields = `<div class="field"><label for="authPhone">Номер телефона</label><div class="auth-phone"><span>+998</span><input id="authPhone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="90 123 45 67" value="${escape(flow.phone.slice(4))}" required></div><small class="field-note">Введите 9 цифр после +998. Код придёт по SMS.</small></div><button class="button soft" name="channel" value="sms">Получить код через SMS</button>`;
     } else if (flow.stage === 'code') {
-      fields = `<p class="auth-copy">Код отправлен по SMS на ${escape(flow.phone)}.</p>${otpMarkup(flow.codeLength)}<button class="button">Подтвердить</button><button type="button" class="button soft" data-auth-resend>Получить новый код по SMS</button><button type="button" class="button ghost" data-auth-phone>Изменить номер</button><button type="button" class="button ghost" data-auth-telegram>Вернуться к Telegram</button>`;
+      fields = `<p class="auth-copy">Код отправлен по SMS на ${escape(flow.phone)}.</p>${otpMarkup(flow.codeLength)}<button class="button">Подтвердить</button><button type="button" class="button soft auth-resend" data-auth-resend>Получить новый код по SMS</button><div class="auth-code-links"><button type="button" class="button ghost auth-text-button" data-auth-phone>Изменить номер</button><button type="button" class="button ghost auth-text-button" data-auth-telegram>Вернуться к Telegram</button></div>`;
     } else {
       fields = `<div class="field"><label for="authName">Ваше имя</label><input id="authName" name="name" autocomplete="name" maxlength="100" placeholder="Например, Лола" required></div><label class="auth-legal"><input type="checkbox" name="legal" required><span>Я принимаю <a href="${escape(apiBase)}/legal/buyer/terms" target="_blank" rel="noopener">условия использования</a> и <a href="${escape(apiBase)}/legal/buyer/privacy" target="_blank" rel="noopener">политику конфиденциальности</a>.</span></label><button class="button">Создать аккаунт</button>`;
     }
     stopCountdown();
-    document.querySelector('.modal-body').innerHTML = `<div class="auth-intro"><img class="auth-logo" src="assets/izbor-icon-192.png?v=20261020" width="62" height="62" loading="eager" decoding="sync" fetchpriority="high" alt="Izbor Market"><div><p class="eyebrow">Izbor Market</p><h2 id="authIntroTitle">${flow.stage === 'name' ? 'Создание аккаунта' : 'Вход для покупателей'}</h2><p class="auth-copy">Один аккаунт для покупок и работы в IZBOR. Telegram или номер телефона.</p></div></div><form id="authForm" class="form">${fields}<p id="authError" class="auth-error" role="alert" hidden></p></form>`;
+    document.querySelector('.modal-body').innerHTML = `<div class="auth-intro${flow.stage==='code'?' auth-code-intro':''}"><img class="auth-logo" src="assets/izbor-icon-192.png?v=20261020" width="62" height="62" loading="eager" decoding="sync" fetchpriority="high" alt="Izbor Market"><div><p class="eyebrow">Izbor Market</p><h2 id="authIntroTitle">${flow.stage === 'code' ? 'Введите код из SMS' : flow.stage === 'phone' ? 'Номер телефона' : flow.stage === 'name' ? 'Создание аккаунта' : 'Вход для покупателей'}</h2>${flow.stage==='code'?'':'<p class="auth-copy">Один аккаунт для покупок и работы в IZBOR. Telegram или номер телефона.</p>'}</div></div><form id="authForm" class="form">${fields}<p id="authError" class="auth-error" role="alert" hidden></p></form>`;
     const modal = document.querySelector('.modal-body').closest('[role=dialog]');
     modal?.classList.add('auth-dialog');
+    modal?.classList.toggle('auth-code-stage',flow.stage==='code');
+    if(modal)modal.scrollTop=0;
     modal?.setAttribute('aria-labelledby', 'authIntroTitle');
     translateAuth(document.querySelector('.modal-body'),language());
     bindOtp(document.querySelector('.modal-body'));
