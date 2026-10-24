@@ -1,5 +1,5 @@
 import {productImageSources,fallbackProductImage} from './shared/product-images.js';
-import {mountNavigationMotion} from './shared/motion.js';
+import {mountNavigationMotion} from './shared/motion.js?v=20261024-nav';
 import {mountChats} from './shared/chats.js';
 import {routePreviewMarkup,mountRoutePreview} from './shared/route-preview.js';
 import { translateUi } from "./shared/ui-copy.js";
