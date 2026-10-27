@@ -1,3 +1,4 @@
+import {setPageSeo,buyerHomeSeo} from './shared/seo.js';
 import {productImageSources,fallbackProductImage} from './shared/product-images.js';
 import {mountNavigationMotion} from './shared/motion.js?v=20261024-nav';
 import {mountChats} from './shared/chats.js';
@@ -137,6 +138,7 @@ function renderNavigation() {
   $('#sideName').textContent = state.user?.name || t('guest');
   $('#sideAvatar').textContent = (state.user?.name || 'M').trim()[0]?.toUpperCase() || 'M';
   $('#clearSearch').setAttribute('aria-label',uiText('Очистить'));
+  $('#globalSearch').setAttribute('aria-label',t('searchPlaceholder'));
   refreshIcons();
 }
 
@@ -150,6 +152,7 @@ function readRouteHash(){
 }
 let chatCleanup=()=>{};
 async function navigate(route, data=null, {fromHistory=false}={}) {
+  setPageSeo(route==='home'?buyerHomeSeo:{title:'Izbor Market — '+({catalog:'Каталог',search:'Поиск',map:'Карта',favorites:'Избранное',profile:'Профиль',chats:'Чаты',notifications:'Уведомления',store:'Магазин',product:'Товар'}[route]||'Личный раздел'),noindex:true});
   chatCleanup();chatCleanup=()=>{};
   if(!fromHistory && location.hash!==routeHash(route,data))history.pushState(null,'',routeHash(route,data));
   if(state.route==='map'&&route!=='map'){state.map?.remove();state.map=null;}
@@ -177,6 +180,7 @@ async function bootstrap() {
   renderNavigation(); bindGlobalEvents();
   // Paint the public home immediately; network and session validation continue below.
   renderHome(true);
+  const initialLoadsPromise=Promise.allSettled([loadProducts(), loadShops(), loadCategories()]);
   const bootstrapEpoch=buyerSessionEpoch;
   try {
     buyerStartupRestore=refreshBuyerSession();
@@ -189,10 +193,10 @@ async function bootstrap() {
     // refreshBuyerSession already handles its own401. Never erase a newer login.
     if(bootstrapEpoch===buyerSessionEpoch&&error.status!==401)toast(error.message,true);
   } finally { buyerStartupRestore=null; }
-  const initialLoads=await Promise.allSettled([loadProducts(), loadShops(), loadCategories()]);
+  const initialLoads=await initialLoadsPromise;
   const initialFailure=initialLoads.find(result=>result.status==='rejected');
   if(state.route==='home'){
-    if(initialFailure){$('#view').innerHTML=errorState(initialFailure.reason);}
+    if(initialFailure){$('#view').innerHTML=pageHead('Izbor Market',t('brandPromise'))+errorState(initialFailure.reason);}
     else if(!state.token){await renderHome();refreshIcons();}
     else await navigate('home',null,{fromHistory:true});
   }
@@ -290,7 +294,7 @@ function productImage(p, className, alt='', index=0, lazy=false) {
   const active=sources[index]||sources[0]||'assets/product-placeholder.svg';
   return `<img class="${className}" src="${esc(active)}" data-product-photo data-photo-sources="${esc(JSON.stringify(sources))}" alt="${esc(alt)}" ${lazy?'loading="lazy"':''} decoding="async" referrerpolicy="no-referrer">`;
 }
-function productCard(p) {
+function productCard(p, position=0) {
   const id=Number(p.id), saved=state.favorites.has(id);
   const {discount,salePrice,oldPrice}=productOfferPricing(p);
   const stock={unconfirmed:'unknown',inStock:'available',outOfStock:'unavailable'}[productAvailability(p)];
@@ -299,7 +303,7 @@ function productCard(p) {
   const reviews=Number(p.product_reviews_count??p.reviews_count??0);
   const canRoute=Number(p.shop_id)>0;
   return `<article class="product-card" data-product="${id}">
-    <div class="product-photo"><button type="button" class="product-open" data-product="${id}" aria-label="${esc(p.title)}">${productImage(p,'product-image','',0,true)}</button>
+    <div class="product-photo"><button type="button" class="product-open" data-product="${id}" aria-label="${esc(p.title)}">${productImage(p,'product-image',p.title||'Товар',0,position>=2)}</button>
     ${discount>0?`<span class="discount">-${Math.round(discount)}%</span>`:''}
     <button class="favorite-button ${saved?'active':''}" data-favorite="${id}" aria-pressed="${saved}" aria-label="${esc(t('favorites'))}: ${esc(p.title||'')}">${icon('heart',20)}</button></div>
     <div class="product-body">${placementLabel(p)}<h3><button class="product-title" data-product="${id}">${esc(p.title||'Товар')}</button></h3><div class="product-meta">${esc(p.shop_name||p.category||'')}</div>
@@ -409,6 +413,7 @@ async function renderProductDetails(id){
 }
 function renderProductDetailsBody(){
   const p=state.activeProduct; if(!p)return;
+  if(state.route==='product')setPageSeo({title:[p.title,p.shop_name,'Izbor Market'].filter(Boolean).join(' — '),description:String(p.description||p.title||'').slice(0,300),noindex:true});
   const {salePrice,oldPrice}=productOfferPricing(p);
   const images=productImageSources(p,API_BASE).filter(src=>src!==mediaUrl(p.thumbnail_url,API_BASE)||src===mediaUrl(p.image_url,API_BASE));
   const specs=[...productSpecifications(p,state.language),[t('availability'),t(productAvailability(p))]];
@@ -452,6 +457,7 @@ function storeFollowMarkup(){
 }
 function renderStoreShell(){
   const page=storePage,s=page.shop;
+  if(state.route==='store')setPageSeo({title:[s.name,s.address,'Izbor Market'].filter(Boolean).join(' — '),description:[s.description,s.address,s.specialization].filter(Boolean).join('. ').slice(0,300),noindex:true});
   const phone=String(s.phone||'').replace(/[^+0-9]/g,'');
   const coordinates=s.latitude!=null&&s.longitude!=null&&Number.isFinite(Number(s.latitude))&&Number.isFinite(Number(s.longitude))&&(Number(s.latitude)!==0||Number(s.longitude)!==0);
   const branches=Array.isArray(page.network?.branches)?page.network.branches:[];

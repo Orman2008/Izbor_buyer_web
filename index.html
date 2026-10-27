@@ -10,12 +10,12 @@
     <script src="shared/appearance-init.js"></script>
     <link rel="stylesheet" href="shared/appearance.css" />
     <meta name="theme-color" content="#f6f8fc" />
-    <meta name="description" content="Izbor (Избор) — поиск товаров и магазинов рядом. Сравнивайте цены и наличие, открывайте каталог и стройте маршрут к магазину." />
-    <title>Izbor (Избор) — товары и магазины рядом</title>
+    <meta name="description" content="Найдите товары и магазины в Izbor Market: категории, предложения продавцов, адреса и расположение на карте.">
+    <title>Izbor Market — товары и магазины рядом</title>
     <link rel="canonical" href="https://izbor.uz/">
     <meta property="og:url" content="https://izbor.uz/">
     <meta property="og:site_name" content="Izbor">
-    <script type="application/ld+json">
+    <script type="application/ld+json" data-home-schema>
 {
   "@context": "https://schema.org",
   "@type": "WebSite",
@@ -31,8 +31,8 @@
     <link rel="icon" type="image/png" sizes="192x192" href="https://izbor.uz/assets/izbor-market-icon-192.png" />
 
     <link rel="stylesheet" href="styles.css?v=20261016-izbor" />
-    <meta property="og:title" content="Izbor (Избор) — поиск товаров и магазинов рядом. Сравнивайте цены и наличие, открывайте каталог и стройте маршрут к магазину." />
-    <meta property="og:description" content="Найдите товар, сравните предложения магазинов и постройте маршрут." />
+    <meta property="og:title" content="Izbor Market — товары и магазины рядом">
+    <meta property="og:description" content="Найдите товары и магазины в Izbor Market: категории, предложения продавцов, адреса и расположение на карте.">
       <link rel="manifest" href="manifest.webmanifest?v=20261024-icons" />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/izbor-app-icon-180-v2.png" />
       <link rel="stylesheet" href="shared/responsive.css?v=20261023-otp" />
@@ -42,15 +42,15 @@
 <link rel="stylesheet" href="shared/brand-system.css?v=20261017">
 <link rel="stylesheet" href="shared/app-sites.css?v=20261023-otp">
 <link rel="stylesheet" href="products.css?v=20261022-photos">
-</head>
+<meta name="twitter:title" content="Izbor Market — товары и магазины рядом"><meta name="twitter:description" content="Найдите товары и магазины в Izbor Market: категории, предложения продавцов, адреса и расположение на карте."><meta name="twitter:image" content="https://izbor.uz/assets/izbor-social.png"><meta property="og:image:alt" content="Izbor Market"><link rel="stylesheet" href="shared/seo.css?v=20261024-seo"></head>
   <body>
     <div id="app" class="app-shell">
       <aside class="desktop-sidebar">
         <button class="brand" data-route="home" aria-label="Izbor Market">
-          <img src="assets/izbor-icon-192.png?v=20261020" alt="" />
+          <img src="assets/izbor-icon-192.png?v=20261020" alt="" width="40" height="40" />
           <span><b>Izbor Market</b><small>Покупателям</small></span>
         </button>
-        <nav id="desktopNav" class="desktop-nav"></nav>
+        <nav aria-label="Основная навигация" id="desktopNav" class="desktop-nav"></nav>
         <div class="sidebar-bottom">
           <button class="soft-button" data-action="language"><i data-lucide="languages"></i><span data-i18n="language">Язык</span></button>
           <button class="profile-mini" data-route="profile"><span id="sideAvatar">M</span><span><b id="sideName">Гость</b><small data-i18n="profile">Профиль</small></span></button>
@@ -60,20 +60,20 @@
       <main class="main-column">
         <header class="topbar">
           <button class="button catalog-shortcut" data-route="catalog" aria-label="Каталог"><i data-lucide="layout-grid"></i><span data-i18n="catalog">Каталог</span></button>
-          <button class="mobile-brand brand" data-route="home"><img src="assets/izbor-icon-192.png?v=20261020" alt="" /><b>Izbor Market</b></button>
+          <button class="mobile-brand brand" data-route="home"><img src="assets/izbor-icon-192.png?v=20261020" alt="" width="40" height="40" /><b>Izbor Market</b></button>
           <div class="global-search">
             <i data-lucide="search"></i>
-            <input id="globalSearch" autocomplete="off" data-i18n-placeholder="searchPlaceholder" placeholder="Поиск товаров и категорий" />
+            <input aria-label="Поиск товаров и категорий" type="search" id="globalSearch" autocomplete="off" data-i18n-placeholder="searchPlaceholder" placeholder="Поиск товаров и категорий" />
             <button id="clearSearch" class="icon-button hidden" aria-label="Очистить"><i data-lucide="x"></i></button>
             <div id="searchSuggestions" class="suggestions hidden"></div>
           </div>
           <button class="icon-button notification-button" data-route="notifications" aria-label="Уведомления"><i data-lucide="bell"></i><span id="notificationDot" class="notification-dot hidden"></span></button>
         </header>
 
-        <section id="view" class="view" aria-live="polite"><div class="loader"><div class="spinner"></div></div></section>
+        <section id="view" class="view" aria-live="polite"><div class="seo-fallback"><h1>Товары и магазины рядом — Izbor Market</h1><p>Найдите товар по названию или категории, сравните предложения продавцов и посмотрите расположение магазина на карте. Покупку оплачивают в магазине.</p><h2>Каталог и информация о продавцах</h2><p>В карточках товаров указаны описание, цена и наличие, которые обновляет продавец. Перед поездкой уточните информацию у магазина.</p><p><a href="https://seller.izbor.uz/">Разместить свой магазин в Izbor Seller</a></p><noscript><p>Для поиска, карты и входа включите JavaScript.</p></noscript></div></section>
       </main>
 
-      <nav id="mobileNav" class="mobile-nav"></nav>
+      <nav aria-label="Мобильная навигация" id="mobileNav" class="mobile-nav"></nav>
     </div>
 
     <div id="modalRoot"></div>
@@ -85,8 +85,8 @@
     <script src="vendor/qrcode.js"></script>
     <script src="runtime-config.js?v=20261016-izbor"></script>
     <script src="startup.js?v=20261016-izbor"></script>
-    <script type="module" src="app.js?v=20261024-nav"></script>
-  <script type="module" src="shared/button-motion.js?v=20261022"></script>
-<script type="module" src="shared/site-motion.js?v=20261023-otp"></script>
+    <script type="module" src="app.bundle.js?v=20261024-seo"></script>
+  <script type="module" src="shared/button-motion.js?v=20261024-focus"></script>
+<script type="module" src="shared/site-motion.js?v=20261024-seo"></script>
 </body>
 </html>
