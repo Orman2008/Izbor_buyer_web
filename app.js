@@ -1,3 +1,5 @@
+import { SkeletonSection, installImageSkeletons } from './shared/skeleton.js';
+installImageSkeletons();
 import {setPageSeo,buyerHomeSeo} from './shared/seo.js';
 import {productImageSources,fallbackProductImage} from './shared/product-images.js';
 import {mountNavigationMotion} from './shared/motion.js?v=20261024-nav';
@@ -112,7 +114,7 @@ async function refreshBuyerSession() {
 function icon(name, size=20) { return `<i data-lucide="${name}" style="width:${size}px;height:${size}px"></i>`; }
 function refreshIcons() { window.lucide?.createIcons({attrs:{'stroke-width':2.1}}); }
 function toast(message, error=false) { const el=document.createElement('div'); el.className=`toast${error?' error':''}`; el.textContent=message; $('#toastRoot').append(el); setTimeout(()=>el.remove(),3200); }
-function setLoading() { $('#view').innerHTML='<div class="loader"><div class="spinner"></div></div>'; }
+function setLoading() { $('#view').classList.remove('iz-content-ready'); $('#view').innerHTML=SkeletonSection(state.route); }
 function requireAuth(action) { if(state.token) return true; showAuth(action); return false; }
 
 const navItems = [
@@ -157,7 +159,7 @@ async function navigate(route, data=null, {fromHistory=false}={}) {
   if(!fromHistory && location.hash!==routeHash(route,data))history.pushState(null,'',routeHash(route,data));
   if(state.route==='map'&&route!=='map'){state.map?.remove();state.map=null;}
   state.searchSuggestionId++; $('#searchSuggestions').classList.add('hidden');
-  state.route=route; state.routeData=data; renderNavigation(); window.scrollTo({top:0,behavior:'smooth'}); setLoading();
+  state.route=route; state.routeData=data; renderNavigation(); window.scrollTo({top:0,behavior:'smooth'}); if(route==='home' && state.catalogLoaded && !Object.keys(state.catalogQuery).length) renderHome(true); else setLoading();
   try {
     if(state.token&&!await ensureLegalAcceptance((path,options={})=>api(path,{...options,...(options.body!==undefined?{body:JSON.stringify(options.body)}:{})}))){$('#view').innerHTML=`<section class="card"><h2>${esc(uiText("Необходимо принять новые версии документов"))}</h2><button class="button" data-retry-route>${esc(uiText("Открыть документы"))}</button></section>`;return;}
     if(route==='ranking'){$('#view').innerHTML=rankingHelp();return;}
@@ -172,6 +174,7 @@ async function navigate(route, data=null, {fromHistory=false}={}) {
     else if(route==='product') await renderProductDetails(Number(data));
     else if(route==='store') await renderStorePage(Number(data));
   } catch(error) { $('#view').innerHTML=errorState(error); }
+  finally { $('#view').classList.add('iz-content-ready'); }
   refreshIcons();
 }
 
@@ -316,7 +319,7 @@ function productCard(p, position=0) {
 function productGrid(items){return items.length?`<div class="product-grid">${items.map(productCard).join('')}</div>`:emptyState();}
 function storeCard(s){return `<button class="store-card" data-store="${Number(s.id)}"><img src="${esc(imageUrl(s.logo_url))}" alt=""><span><b>${esc(s.name||'Магазин')}</b><small class="muted">${esc(s.specialization||s.address||'')}</small></span></button>`;}
 
-function skeletonGrid(){return '<div class="product-grid skeleton-grid" role="status" aria-label="'+esc({ru:'Загрузка товаров',en:'Loading products',uz:'Mahsulotlar yuklanmoqda'}[state.language])+'">'+Array.from({length:6},()=>'<div class="product-skeleton" aria-hidden="true"><div></div><span></span><span></span></div>').join('')+'</div>';}
+function skeletonGrid(){return SkeletonSection('products');}
 async function renderHome(preview=false){
   if(!preview && (!state.catalogLoaded || Object.keys(state.catalogQuery).length)) await loadProducts();
   if(state.route!=='home')return;
@@ -482,7 +485,7 @@ function renderStoreProducts(){
 async function loadStoreProducts(append=false){
   const page=storePage,request=++storeProductsRequest;
   const el=$('#storeProducts');if(!el)return;
-  if(!append){page.offset=0;page.products=[];el.innerHTML='<div class="loader" role="status"><div class="spinner"></div></div>';}
+  if(!append){page.offset=0;page.products=[];el.innerHTML=SkeletonSection('products');}
   const more=el.querySelector('[data-store-more]');if(more)more.disabled=true;
   try{
     const params=new URLSearchParams({shop_id:String(page.id),lang:state.language,limit:'24',offset:String(page.offset)});
